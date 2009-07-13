@@ -67,7 +67,7 @@ class World(object):
 		
 		def __init__(self):
 				
-				self.font = pygame.font.SysFont('Arial', 12)
+				self.font = pygame.font.SysFont('Arial', 12, True)
 				
 				self.entities = {}
 				self.exp_table = {}
@@ -107,9 +107,45 @@ class World(object):
 		def render(self, surface):
 				
 				surface.blit(self.background, (0, 0))
+				entity_selected = False
+				
 				for entity in self.entities.itervalues():
+						if entity.selected is True:
+							entity_selected = True
 						entity.render(surface)
-						
+				
+				if entity_selected is True:
+					x, y = SCREEN_SIZE
+					
+					x = x - 220
+					y = 20
+					w = 200
+					h = 400
+					
+					color = (80, 80, 80)
+					border = 2
+					pygame.draw.line(surface, color, (x, y), (x+w, y), border)
+					pygame.draw.line(surface, color, (x+w, y), (x+w, y+h), border)
+					pygame.draw.line(surface, color, (x+w, y+h), (x, y+h), border)
+					pygame.draw.line(surface, color, (x, y+h), (x, y), border)
+					pygame.draw.rect(surface, (255,255,255), (x+border,y+border,w-border,h-border))
+					
+					xtext = x + 20
+					ytext = y + 20
+					
+					lines = []
+					lines.append("Level: %d" % self.level)
+					lines.append("Experience: %d" % self.experience)
+					lines.append("Death Blows: %d" % self.kills)
+					lines.append("Speed: %d" % self.speed)
+					
+					'''Level'''
+					for line in lines:
+						text = self.world.font.render(line, 1, (80, 80, 80))
+						wtext, htext = text.get_size()
+						surface.blit(text, (xtext, ytext, wtext, htext))
+						ytext += htext + 10
+					
 						
 		def get_close_entity(self, name, location, range=100.):
 				
@@ -122,8 +158,7 @@ class World(object):
 										return entity				
 				return None
 		
-		def set_average_level(self):				
-				
+		def set_average_level(self):
 				i = 0
 				total_level = 0
 				for entity in self.entities.itervalues():						
@@ -134,6 +169,15 @@ class World(object):
 				self.average_level = int(total_level/i)		
 				return None
 			
+		def get_clicked_entity(self, location):				
+				for entity in self.entities.itervalues():
+					entity.selected = False
+					sprite_loc = Rect(entity.location,entity.image.get_size())
+					if sprite_loc.contains(location):
+						
+						return self.get(entity.id)
+					
+				return None
 	
 
 class GameEntity(object):
@@ -148,17 +192,32 @@ class GameEntity(object):
 				self.speed = 0.
 				self.level = 0
 				self.experience = 0.
+				self.selected = False
+				self.selected_image = pygame.image.load(os.path.join('ressources', 'selected.png')).convert_alpha()
 				
 				
 				self.brain = StateMachine()
 				
 				self.id = 0
+		
+
 				
 		def render(self, surface):
-				
 				x, y = self.location
 				w, h = self.image.get_size()
-				surface.blit(self.image, (x-w/2, y-h/2))	 
+				
+				if self.selected:
+					ws, hs = self.selected_image.get_size()
+					surface.blit(self.selected_image, (x-ws/2, (y+hs/2)+hs))
+				surface.blit(self.image, (x-w/2, y-h/2))
+				
+				'''
+				color = (20, 120, 0)
+				pygame.draw.line(surface, color, (x, y), (x+w, y), 2)
+				pygame.draw.line(surface, color, (x+w, y), (x+w, y+h), 2)
+				pygame.draw.line(surface, color, (x+w, y+h), (x, y+h), 2)
+				pygame.draw.line(surface, color, (x, y+h), (x, y), 2)
+				'''
 				
 		def process(self, time_passed):
 				
@@ -213,6 +272,7 @@ class Spider(GameEntity):
 				self.speed = 50. + randint(-20, 20)
 				self.level = self.world.average_level
 				self.health = 25 + self.world.average_level
+				self.max_health = 25 + self.world.average_level
 				
 		def bitten(self, ant):
 				
@@ -237,16 +297,21 @@ class Spider(GameEntity):
 				x, y = self.location
 				w, h = self.image.get_size()
 				
-				bar_x = x-w/2
+				unit = float(25./100.)
+				
+				'''Level'''
+				bar_x = x-(w/4)
 				level = self.world.font.render(str(self.level), 1, (80, 80, 80))
 				w2,h2 = level.get_size()
 				bar_y = y - h 
 				surface.blit(level, (bar_x, bar_y, w2,h2))
-	
+				
+				'''Life Bar'''
 				bar_x = x - 12
 				bar_y = y + h/2
-				surface.fill( (255, 0, 0), (bar_x, bar_y, 25, 4))
-				surface.fill( (0, 255, 0), (bar_x, bar_y, self.health, 4))
+				rate = float(float(self.health)/float(self.max_health))*100
+				surface.fill( (200, 0, 0), (bar_x, bar_y, 25, 4))
+				surface.fill( (0, 200, 0), (bar_x, bar_y, rate*unit, 4))
 				
 		def process(self, time_passed):
 				
@@ -278,19 +343,25 @@ class Ant(GameEntity):
 				
 				self.dead_image = pygame.transform.flip(image, 0, 1)
 				self.health = 5
+				self.max_health = 5
 				self.max_carrying = 100
 				self.carrying = 0
 				self.carry_image = None
+				
+				self.kills = 0
 				
 				''' Experience '''
 				self.experience = 0
 				self.level = 1
 
+		def refill_life(self):
+				self.health = self.max_health
+
 		def level_up(self):
-				self.world.set_average_level()
 				self.level += 1
-				self.health = 5
-				self.health += 1
+				self.max_health += 1
+				self.world.set_average_level()
+				self.refill_life()
 				self.experience = 0
 				
 		def carry(self, image):
@@ -321,31 +392,32 @@ class Ant(GameEntity):
 				x, y = self.location
 				w, h = self.image.get_size()
 				
+				unit = float(25./100.)
 				
-				bar_x = x-w/2
+				'''Level'''
+				bar_x = x-(w/4)
 				level = self.world.font.render(str(self.level), 1, (80, 80, 80))
 				w2,h2 = level.get_size()
 				bar_y = y - h 
 				surface.blit(level, (bar_x, bar_y, w2,h2))
 				
-				bar_x = x - 12
 				'''Life Bar'''
+				bar_x = x - 12
 				bar_y = y + h/2
+				rate = float(float(self.health)/float(self.max_health))*100
 				surface.fill( (200, 0, 0), (bar_x, bar_y, 25, 4))
-				surface.fill( (0, 200, 0), (bar_x, bar_y, self.health*5, 4))
+				surface.fill( (0, 200, 0), (bar_x, bar_y, rate*unit, 4))
 				
 				'''Charge Bar'''
 				bar_y = y + h/2 + 5
 				surface.fill( (180, 180, 180), (bar_x, bar_y, 25, 4))
 				surface.fill( (0, 0, 200), (bar_x, bar_y, int(self.carrying/4), 4))
 				
-				''' Exp bar '''		
+				'''Exp bar'''		
 				bar_y = y - h + 12
-				surface.fill( (60, 60, 60), (bar_x, bar_y, 25, 4))
-				unit = float(25./100.)
+				surface.fill( (180, 180, 180), (bar_x, bar_y, 25, 4))
 				rate = float(float(self.experience)/float(self.world.exp_table[self.level]))*100
-				exp_bar_width = rate*unit
-				surface.fill( (200, 0, 200), (bar_x, bar_y, exp_bar_width, 4))
+				surface.fill( (255, 210, 0), (bar_x, bar_y, rate*unit, 4))
 								
 				if self.carry_image:
 						x, y = self.location
@@ -527,10 +599,13 @@ class AntStateHunting(State):
 										self.ant.carry(spider.image)								
 										self.ant.world.remove_entity(spider)
 										self.got_kill = True
+										self.kills += 1
 										self.ant.experience += 600
 														
 				
 		def check_conditions(self):
+				if self.ant.health <= int(self.ant.max_health/10):
+						return "exploring"
 				
 				if self.got_kill:
 						return "delivering"
@@ -559,7 +634,7 @@ def run():
 		
 		pygame.init()
 		screen = pygame.display.set_mode(SCREEN_SIZE, 0, 32)
-		pygame.display.toggle_fullscreen()
+		#pygame.display.toggle_fullscreen()
 		world = World()
 		
 		w, h = SCREEN_SIZE
@@ -594,7 +669,12 @@ def run():
 								return
 						if event.type == QUIT:
 								return				
-				
+						if event.type == MOUSEBUTTONDOWN:
+								entity = world.get_clicked_entity(pygame.Rect(pygame.mouse.get_pos() + (4,4)))
+								if entity is not None:
+									entity.selected = True
+								
+
 				time_passed = clock.tick(30)
 				
 				if randint(1, 500) == 1:
