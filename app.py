@@ -1,7 +1,7 @@
 SCREEN_SIZE = (1024, 700)
 NEST_POSITION = (320, 240)
 ANT_COUNT = 20
-NEST_SIZE = 100.
+NEST_SIZE = 200.
 
 import os
 import pygame
@@ -715,9 +715,6 @@ def run():
 		world = World()
 
 		Background = world.ground_images[4]
-		
-
-
 		graphRect = world.ground_images[1].get_rect()
 
 		w, h = SCREEN_SIZE
@@ -773,10 +770,6 @@ def run():
 
 		world.background = pygame.image.fromstring(bgStr, SCREEN_SIZE, 'RGB')
 		
-
-
-		
-		
 		clock = pygame.time.Clock()
 		
 		ant_image = pygame.image.load(os.path.join('ressources', 'bad-1.png')).convert_alpha()
@@ -815,7 +808,6 @@ def run():
 
 				time_passed = clock.tick(30)
 				
-						
 				if randint(1, 500) == 1:
 						ore = Ore(world, ore_images[randint(0,5)])
 						ore.location = Vector2(randint(0, w), randint(0, h))
