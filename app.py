@@ -86,7 +86,7 @@ class World(object):
 					self.ground_images[i] = pygame.image.load(os.path.join('ressources', filename)).convert() 
 				
 				self.map_images = {}
-				for i in xrange(2):
+				for i in xrange(4):
 					i += 1
 					filename = 'r%d.png' % i
 					self.map_images[i] = pygame.image.load(os.path.join('ressources', filename)).convert_alpha() 
