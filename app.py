@@ -67,16 +67,30 @@ class World(object):
 		
 		def __init__(self):
 				
-				self.font = pygame.font.SysFont('Arial', 12, True)
+				self.font = pygame.font.SysFont('Arial', 12, False)
 				
 				self.entities = {}
 				self.exp_table = {}
 				self.entity_id = 0	
 				self.average_level = 1
+				self.ore_hull_size = 100000.
+				self.ore_farmed = 0.
 				
-				for i in xrange(1, 101):
+				for i in xrange(0, 101):
 					self.exp_table[i] = float((i * 1000) + ((i-1)*1000))
+					
+				self.ground_images = {}
+				for i in xrange(14):
+					i += 1
+					filename = 'g%d.png' % i
+					self.ground_images[i] = pygame.image.load(os.path.join('ressources', filename)).convert() 
 				
+				self.map_images = {}
+				for i in xrange(2):
+					i += 1
+					filename = 'r%d.png' % i
+					self.map_images[i] = pygame.image.load(os.path.join('ressources', filename)).convert_alpha() 
+					
 				self.background = pygame.surface.Surface(SCREEN_SIZE).convert()
 				self.background.fill((255, 255, 255))
 				pygame.draw.circle(self.background, (200, 255, 200), NEST_POSITION, int(NEST_SIZE))
@@ -107,45 +121,95 @@ class World(object):
 		def render(self, surface):
 				
 				surface.blit(self.background, (0, 0))
-				entity_selected = False
+				entity_selected = None
 				
 				for entity in self.entities.itervalues():
 						if entity.selected is True:
-							entity_selected = True
+							entity_selected = entity
 						entity.render(surface)
+
+				''' Ore tank ''' 
+				x, y = NEST_POSITION 
+				x = x - 20
+				w = 20
 				
-				if entity_selected is True:
+				h = NEST_SIZE
+				
+				lightColor = (100, 170, 208)
+				darkColor = (3, 69, 105)
+				backgroundColor = (8, 108, 162)
+				emptyBackgroundColor = (154, 192, 212, 80)
+				shadowColor = (80,80,80, 127)
+
+				
+				shadowMargin = 2
+				border = 1
+				pygame.draw.rect(self.background, shadowColor, (x+border+shadowMargin,y+border+shadowMargin,w-border,h-border))
+				pygame.draw.line(self.background, lightColor, (x, y), (x+w, y), border)
+				pygame.draw.line(self.background, darkColor, (x+w, y), (x+w, y+h), border)
+				pygame.draw.line(self.background, darkColor, (x+w, y+h), (x, y+h), border)
+				pygame.draw.line(self.background, lightColor, (x, y+h), (x, y), border)
+				pygame.draw.rect(self.background, emptyBackgroundColor, (x+border,y+border,w-border,h-border))
+				
+				unit = float(h)/100.
+				rate = (self.ore_farmed/self.ore_hull_size) * 100
+				
+				y = y + h 
+				h = unit * rate
+				y -= h -1
+				
+				pygame.draw.line(self.background, lightColor, (x, y), (x+w-border, y), border)
+				pygame.draw.rect(self.background, backgroundColor, (x,y,w,h))
+
+
+				if entity_selected is not None:
 					x, y = SCREEN_SIZE
 					
 					x = x - 220
 					y = 20
 					w = 200
-					h = 400
+					h = 30
 					
-					color = (80, 80, 80)
-					border = 2
-					pygame.draw.line(surface, color, (x, y), (x+w, y), border)
-					pygame.draw.line(surface, color, (x+w, y), (x+w, y+h), border)
-					pygame.draw.line(surface, color, (x+w, y+h), (x, y+h), border)
-					pygame.draw.line(surface, color, (x, y+h), (x, y), border)
-					pygame.draw.rect(surface, (255,255,255), (x+border,y+border,w-border,h-border))
-					
+
 					xtext = x + 20
 					ytext = y + 20
 					
 					lines = []
-					lines.append("Level: %d" % self.level)
-					lines.append("Experience: %d" % self.experience)
-					lines.append("Death Blows: %d" % self.kills)
-					lines.append("Speed: %d" % self.speed)
+					lines.append("Level: %d" % entity_selected.level)
+					lines.append("Hit Points: %d/%d" % (entity_selected.health, entity_selected.max_health))
+					lines.append("Experience: %d/%d" % (entity_selected.experience, self.exp_table[entity_selected.level]))
+					lines.append("Death Blows: %d" % entity_selected.kills)
+					lines.append("Ore Farmed: %d" % entity_selected.ore_farmed)
+					lines.append("Speed: %d" % entity_selected.speed)
 					
-					'''Level'''
+					'''
+					if entity_selected.brain is not None: 
+						lines.append("State: %s" % entity_selected.brain.active_state.name)
+					'''
+					
+					'''Text Height'''
 					for line in lines:
-						text = self.world.font.render(line, 1, (80, 80, 80))
+						htext = entity_selected.world.font.size('I')[1]
+						h += htext + 10
+
+					''' Frame ''' 
+					lightColor = (255, 229, 115)
+					darkColor = (255, 207, 0)
+					backgroundColor = (255, 219, 64)
+					shadowColor = (80,80,80, 127)
+					border = 2
+					pygame.draw.rect(surface, shadowColor, (x+border+5,y+border+5,w-border,h-border))
+					pygame.draw.line(surface, lightColor, (x, y), (x+w, y), border)
+					pygame.draw.line(surface, darkColor, (x+w, y), (x+w, y+h), border)
+					pygame.draw.line(surface, darkColor, (x+w, y+h), (x, y+h), border)
+					pygame.draw.line(surface, lightColor, (x, y+h), (x, y), border)
+					pygame.draw.rect(surface, backgroundColor, (x+border,y+border,w-border,h-border))
+					
+					for line in lines:
+						text = entity_selected.world.font.render(line, 1, (166, 135, 0))
 						wtext, htext = text.get_size()
 						surface.blit(text, (xtext, ytext, wtext, htext))
 						ytext += htext + 10
-					
 						
 		def get_close_entity(self, name, location, range=100.):
 				
@@ -194,21 +258,30 @@ class GameEntity(object):
 				self.experience = 0.
 				self.selected = False
 				self.selected_image = pygame.image.load(os.path.join('ressources', 'selected.png')).convert_alpha()
-				
+				self.health = 0
+				self.max_health = 0
+				self.kills = 0
+				self.ore_farmed = 0
 				
 				self.brain = StateMachine()
 				
 				self.id = 0
 		
 
+		def select(self):
+				for entity in self.world.entities.values():
+						entity.selected = False
 				
+				self.selected = True
+			
+			
 		def render(self, surface):
 				x, y = self.location
 				w, h = self.image.get_size()
 				
 				if self.selected:
 					ws, hs = self.selected_image.get_size()
-					surface.blit(self.selected_image, (x-ws/2, (y+hs/2)+hs))
+					surface.blit(self.selected_image, (x-ws/2, (y+h/2)))
 				surface.blit(self.image, (x-w/2, y-h/2))
 				
 				'''
@@ -240,6 +313,7 @@ class Ore(GameEntity):
 		def __init__(self, world, image):
 				GameEntity.__init__(self, world, "ore", image)
 				self.health = 2500
+				self.max_health = 2500
 				
 		def mined(self):
 			self.health -= 1
@@ -249,7 +323,7 @@ class Ore(GameEntity):
 		def render(self, surface):
 
 				GameEntity.render(self, surface)
-				if self.health > 0:
+				if self.selected is True: 
 					x, y = self.location
 					w, h = self.image.get_size()
 					bar_x = x - 25
@@ -271,8 +345,8 @@ class Spider(GameEntity):
 				self.dead_image = pygame.transform.flip(image, 0, 1)
 				self.speed = 50. + randint(-20, 20)
 				self.level = self.world.average_level
-				self.health = 25 + self.world.average_level
-				self.max_health = 25 + self.world.average_level
+				self.health = 5 + self.world.average_level
+				self.max_health = 5 + self.world.average_level
 				
 		def bitten(self, ant):
 				
@@ -301,7 +375,7 @@ class Spider(GameEntity):
 				
 				'''Level'''
 				bar_x = x-(w/4)
-				level = self.world.font.render(str(self.level), 1, (80, 80, 80))
+				level = self.world.font.render(str(self.level), 1, (255,255,255))
 				w2,h2 = level.get_size()
 				bar_y = y - h 
 				surface.blit(level, (bar_x, bar_y, w2,h2))
@@ -376,13 +450,16 @@ class Ant(GameEntity):
 
 		def drop(self, surface):
 				if self.carrying > 0:
+					self.world.ore_farmed += self.carrying
+					self.ore_farmed += self.carrying
 					self.experience += 300
 					self.carrying = 0
+					
 				
 				if self.carry_image:
 						x, y = self.location
 						w, h = self.carry_image.get_size()
-						surface.blit(self.carry_image, (x-w, y-h/2))
+						#surface.blit(self.carry_image, (x-w, y-h/2))
 						self.carry_image = None
 						self.experience += 300
 				
@@ -396,7 +473,7 @@ class Ant(GameEntity):
 				
 				'''Level'''
 				bar_x = x-(w/4)
-				level = self.world.font.render(str(self.level), 1, (80, 80, 80))
+				level = self.world.font.render(str(self.level), 1, (255,255,255))
 				w2,h2 = level.get_size()
 				bar_y = y - h 
 				surface.blit(level, (bar_x, bar_y, w2,h2))
@@ -599,7 +676,7 @@ class AntStateHunting(State):
 										self.ant.carry(spider.image)								
 										self.ant.world.remove_entity(spider)
 										self.got_kill = True
-										self.kills += 1
+										self.ant.kills += 1
 										self.ant.experience += 600
 														
 				
@@ -636,15 +713,76 @@ def run():
 		screen = pygame.display.set_mode(SCREEN_SIZE, 0, 32)
 		#pygame.display.toggle_fullscreen()
 		world = World()
+
+		Background = world.ground_images[4]
 		
+
+
+		graphRect = world.ground_images[1].get_rect()
+
 		w, h = SCREEN_SIZE
+		
+		columns = int(w/graphRect.width) + 1
+		rows = int(h/graphRect.height) + 1
+		# Loop and draw the background
+		for y in xrange(rows):
+			for x in xrange (columns):
+				# Start a new row
+				if x == 0 and y > 0:
+					graphRect = graphRect.move([-(columns -1 ) * graphRect.width, graphRect.height])
+				# Continue a row
+				if x > 0:
+					graphRect = graphRect.move([graphRect.width, 0])
+				screen.blit(Background, graphRect)
+				
+		map = [
+			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   1,   2,   3,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   5,   6,   7,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   5,   6,   9,   3,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   10,  6,   6,   7,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   4,   10,  11,  12,  4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   1,   2,   3,   4,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   5,   6,   7,   4,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   5,   6,   9,   3,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   10,  6,   6,   7,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   4,   10,  11,  12,  4],
+		];
+		
+		x = 0
+		y = 0
+		for row in map:
+			for tile in row:
+				screen.blit(world.ground_images[tile], (x, y))
+				x += graphRect.width
+			x = 0
+			y += graphRect.width
+
+		for i in xrange(5):
+			screen.blit(world.map_images[randint(1, 2)], (randint(0, w), randint(0, h)))
+			
+		# Convert Tiled background to Image
+		bgStr = pygame.image.tostring(screen, 'RGB')
+
+		world.background = pygame.image.fromstring(bgStr, SCREEN_SIZE, 'RGB')
+		
+
+
+		
 		
 		clock = pygame.time.Clock()
 		
 		ant_image = pygame.image.load(os.path.join('ressources', 'bad-1.png')).convert_alpha()
 		leaf_image = pygame.image.load(os.path.join('ressources', 'bad-child-1.png')).convert_alpha()
 		spider_image = pygame.image.load(os.path.join('ressources', 'glow-1.png')).convert_alpha()
-		
+
 		ore_images = []
 		ore_images.append(pygame.image.load(os.path.join('ressources', 'ore-1.png')).convert_alpha()) 
 		ore_images.append(pygame.image.load(os.path.join('ressources', 'ore-2.png')).convert_alpha())
@@ -672,23 +810,24 @@ def run():
 						if event.type == MOUSEBUTTONDOWN:
 								entity = world.get_clicked_entity(pygame.Rect(pygame.mouse.get_pos() + (4,4)))
 								if entity is not None:
-									entity.selected = True
+									entity.select()
 								
 
 				time_passed = clock.tick(30)
 				
+						
 				if randint(1, 500) == 1:
 						ore = Ore(world, ore_images[randint(0,5)])
 						ore.location = Vector2(randint(0, w), randint(0, h))
 						world.add_entity(ore)				
-
-				
+						
+				'''
 				if randint(1, 200) == 1:
 					ant = Ant(world, ant_image)
 					ant.location = Vector2(randint(0, w), randint(0, h))
 					ant.brain.set_state("exploring")
 					world.add_entity(ant)
-				
+				'''
 															
 				if randint(1, 10) == 1:
 						leaf = Leaf(world, leaf_image)
