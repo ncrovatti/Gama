@@ -6,7 +6,7 @@ NEST_SIZE = 200.
 import os
 import pygame
 from pygame.locals import *
-
+from math import sqrt
 from random import randint, choice
 from gameobjects.vector2 import Vector2
 
@@ -133,9 +133,9 @@ class World(object):
 				x = x - 20
 				w = 20
 				
-				h = NEST_SIZE
+				h = NEST_SIZE/2
 				
-				lightColor = (100, 170, 208)
+				lightColor = (100, 170, 208, 127)
 				darkColor = (3, 69, 105)
 				backgroundColor = (8, 108, 162)
 				emptyBackgroundColor = (154, 192, 212, 80)
@@ -149,7 +149,7 @@ class World(object):
 				pygame.draw.line(self.background, darkColor, (x+w, y), (x+w, y+h), border)
 				pygame.draw.line(self.background, darkColor, (x+w, y+h), (x, y+h), border)
 				pygame.draw.line(self.background, lightColor, (x, y+h), (x, y), border)
-				pygame.draw.rect(self.background, emptyBackgroundColor, (x+border,y+border,w-border,h-border))
+				pygame.draw.rect(self.background.convert_alpha(), emptyBackgroundColor, (x+border,y+border,w-border,h-border))
 				
 				unit = float(h)/100.
 				rate = (self.ore_farmed/self.ore_hull_size) * 100
@@ -192,7 +192,8 @@ class World(object):
 						htext = entity_selected.world.font.size('I')[1]
 						h += htext + 10
 
-					''' Frame ''' 
+					
+					''' Frame 
 					lightColor = (255, 229, 115)
 					darkColor = (255, 207, 0)
 					backgroundColor = (255, 219, 64)
@@ -204,6 +205,10 @@ class World(object):
 					pygame.draw.line(surface, darkColor, (x+w, y+h), (x, y+h), border)
 					pygame.draw.line(surface, lightColor, (x, y+h), (x, y), border)
 					pygame.draw.rect(surface, backgroundColor, (x+border,y+border,w-border,h-border))
+					''' 
+					self.panel_image = pygame.image.load(os.path.join('ressources', 'panel.png')).convert_alpha()
+					w, h = self.panel_image.get_size()
+					surface.blit(self.panel_image, (x, y, w, h))
 					
 					for line in lines:
 						text = entity_selected.world.font.render(line, 1, (166, 135, 0))
@@ -250,7 +255,6 @@ class GameEntity(object):
 				
 				self.world = world
 				self.name = name
-				self.image = image
 				self.location = Vector2(0, 0)
 				self.destination = Vector2(0, 0)
 				self.speed = 0.
@@ -263,11 +267,29 @@ class GameEntity(object):
 				self.kills = 0
 				self.ore_farmed = 0
 				
+				''' Animation '''
+				self.start = pygame.time.get_ticks()
+				self.delay = 1000 / 10
+				self.last_update = 0
+				self.frame = 0
+				
+				self.images = image
+				self.image = self.images[self.frame]
+				
 				self.brain = StateMachine()
 				
 				self.id = 0
 		
 
+		def update(self, t):
+			if t - self.last_update > self.delay:
+				self.frame += 1
+				if self.frame >= len(self.images):
+					self.frame = 0
+				self.image = self.images[self.frame]
+				self.last_update = t
+		
+		
 		def select(self):
 				for entity in self.world.entities.values():
 						entity.selected = False
@@ -276,6 +298,7 @@ class GameEntity(object):
 			
 			
 		def render(self, surface):
+				self.update(pygame.time.get_ticks())	
 				x, y = self.location
 				w, h = self.image.get_size()
 				
@@ -301,7 +324,15 @@ class GameEntity(object):
 							self.level_up()
 				
 				if self.speed > 0. and self.location != self.destination:
-						
+						'''
+						w,h = self.image.get_size()
+						diameter = sqrt(w*w + h*h)
+						print diameter
+						if self.world.get_close_entity('ant', self.destination, diameter) is not None:
+							w, h = SCREEN_SIZE
+							self.destination = Vector2(randint(0, w), randint(0, h))
+							print "moving out to %s" % str(self.destination)
+						'''		
 						vec_to_destination = self.destination - self.location				
 						distance_to_destination = vec_to_destination.get_length()
 						heading = vec_to_destination.get_normalized()
@@ -342,7 +373,7 @@ class Spider(GameEntity):
 		
 		def __init__(self, world, image):
 				GameEntity.__init__(self, world, "spider", image)
-				self.dead_image = pygame.transform.flip(image, 0, 1)
+				self.dead_image = pygame.transform.flip(image[0], 0, 1)
 				self.speed = 50. + randint(-20, 20)
 				self.level = self.world.average_level
 				self.health = 5 + self.world.average_level
@@ -415,7 +446,7 @@ class Ant(GameEntity):
 				self.brain.add_state(hunting_state)
 				self.brain.add_state(mining_state)
 				
-				self.dead_image = pygame.transform.flip(image, 0, 1)
+				self.dead_image = pygame.transform.flip(image[0], 0, 1)
 				self.health = 5
 				self.max_health = 5
 				self.max_carrying = 100
@@ -519,7 +550,7 @@ class AntStateExploring(State):
 						self.random_destination()
 						
 		def check_conditions(self):
-												
+			
 				leaf = self.ant.world.get_close_entity("leaf", self.ant.location)				
 				if leaf is not None:
 						self.ant.leaf_id = leaf.id
@@ -705,10 +736,20 @@ class AntStateHunting(State):
 				
 				self.got_kill = False
 
-
+'''
+def GameInit():
+	zipnames = filter(isfile, glob.glob('*.gen'))
+	for zipname in zipnames:
+		zf = zipfile.ZipFile (zipname, 'r')
+		for zfilename in zf.namelist(): # don't shadow the "file" builtin
+			newFile = open ( zfilename, "wb")
+			newFile.write (zf.read (zfilename))
+			newFile.close() 
+		zf.close()
+'''
 		
 def run():
-		
+		#GameInit()
 		pygame.init()
 		screen = pygame.display.set_mode(SCREEN_SIZE, 0, 32)
 		#pygame.display.toggle_fullscreen()
@@ -761,9 +802,16 @@ def run():
 				x += graphRect.width
 			x = 0
 			y += graphRect.width
-
-		for i in xrange(5):
-			screen.blit(world.map_images[randint(1, 2)], (randint(0, w), randint(0, h)))
+			
+		nest_location = Vector2(*NEST_POSITION)
+		
+		for i in xrange(10):	 
+			wanted_x = randint(0, w)
+			wanted_y = randint(0, h)
+			while nest_location.get_distance_to((wanted_x, wanted_y)) < NEST_SIZE:
+				wanted_x = randint(0, w)
+				wanted_y = randint(0, h)
+			screen.blit(world.map_images[randint(1, 4)], (wanted_x,wanted_y))
 			
 		# Convert Tiled background to Image
 		bgStr = pygame.image.tostring(screen, 'RGB')
@@ -772,17 +820,23 @@ def run():
 		
 		clock = pygame.time.Clock()
 		
-		ant_image = pygame.image.load(os.path.join('ressources', 'bad-1.png')).convert_alpha()
-		leaf_image = pygame.image.load(os.path.join('ressources', 'bad-child-1.png')).convert_alpha()
-		spider_image = pygame.image.load(os.path.join('ressources', 'glow-1.png')).convert_alpha()
+		ant_image = []
+		ant_image.append(pygame.image.load(os.path.join('ressources', 'bad-1.png')).convert_alpha())
+		ant_image.append(pygame.image.load(os.path.join('ressources', 'bad-2.png')).convert_alpha())
+		ant_image.append(pygame.image.load(os.path.join('ressources', 'bad-3.png')).convert_alpha())
+		
+		leaf_image = []
+		leaf_image.append(pygame.image.load(os.path.join('ressources', 'bad-child-1.png')).convert_alpha())
+		spider_image = []
+		spider_image.append(pygame.image.load(os.path.join('ressources', 'glow-1.png')).convert_alpha())
 
 		ore_images = []
-		ore_images.append(pygame.image.load(os.path.join('ressources', 'ore-1.png')).convert_alpha()) 
-		ore_images.append(pygame.image.load(os.path.join('ressources', 'ore-2.png')).convert_alpha())
-		ore_images.append(pygame.image.load(os.path.join('ressources', 'ore-3.png')).convert_alpha())
-		ore_images.append(pygame.image.load(os.path.join('ressources', 'ore-4.png')).convert_alpha())
-		ore_images.append(pygame.image.load(os.path.join('ressources', 'ore-5.png')).convert_alpha())
-		ore_images.append(pygame.image.load(os.path.join('ressources', 'ore-6.png')).convert_alpha())
+		ore_images.append([pygame.image.load(os.path.join('ressources', 'ore-1.png')).convert_alpha()]) 
+		ore_images.append([pygame.image.load(os.path.join('ressources', 'ore-2.png')).convert_alpha()])
+		ore_images.append([pygame.image.load(os.path.join('ressources', 'ore-3.png')).convert_alpha()])
+		ore_images.append([pygame.image.load(os.path.join('ressources', 'ore-4.png')).convert_alpha()])
+		ore_images.append([pygame.image.load(os.path.join('ressources', 'ore-5.png')).convert_alpha()])
+		ore_images.append([pygame.image.load(os.path.join('ressources', 'ore-6.png')).convert_alpha()])
 
 		for ant_no in xrange(ANT_COUNT):
 				ant = Ant(world, ant_image)
