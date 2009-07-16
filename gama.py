@@ -255,7 +255,7 @@ class GameEntity(object):
 				
 				''' Animation '''
 				self.start = pygame.time.get_ticks()
-				self.delay = 1000 / 60
+				self.delay = 1000 / 30
 				self.last_update = 0
 				self.frame = 0
 				
@@ -806,6 +806,7 @@ class SpiderChampion(GameEntity):
 				self.exp_value = self.exp_value+1200*self.level*1000
 				self.almost_dead = False
 				self.shit_list = {}
+				self.delay = 1000 / 60
 				
 		def bitten(self, ant):
 				
@@ -829,6 +830,10 @@ class SpiderChampion(GameEntity):
 						self.image = self.almost_dead_image
 						self.face()
 						self.almost_dead = True
+						if self.location == self.destination:
+							w,h = SCREEN_SIZE
+							self.destination = Vector2(randint(w, w+100), randint(h, h+100))
+							self.speed = 170.
 
 				
 				if self.health <= 0:
@@ -840,7 +845,6 @@ class SpiderChampion(GameEntity):
 						print "Kills : %d" % self.kills
 						print "Exp given : %d to %d attackers" % (self.exp_value, len(self.shit_list))
 						print 
-				self.speed = 0.
 				
 
 				
@@ -1049,30 +1053,6 @@ class Spider(GameEntity):
 						self.image = self.dead_image
 				self.speed = 140.
 				
-
-				
-		def render(self, surface):
-				
-				GameEntity.render(self, surface)
-								
-				x, y = self.location
-				w, h = self.image.get_size()
-				
-				unit = float(25./100.)
-				
-				'''Level'''
-				bar_x = x-(w/4)
-				level = self.world.font.render(str(self.level), 1, (255,255,255))
-				w2,h2 = level.get_size()
-				bar_y = y - h 
-				surface.blit(level, (bar_x, bar_y, w2,h2))
-				
-				'''Life Bar'''
-				bar_x = x - 12
-				bar_y = y + h/2
-				rate = float(float(self.health)/float(self.max_health))*100
-				surface.fill( (200, 0, 0), (bar_x, bar_y, 25, 4))
-				surface.fill( (0, 200, 0), (bar_x, bar_y, rate*unit, 4))
 				
 		def process(self, time_passed):
 				
