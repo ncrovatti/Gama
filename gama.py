@@ -39,8 +39,14 @@ class World(object):
 				for i in xrange(4):
 					i += 1
 					filename = 'r%d.png' % i
-					self.map_images[i] = pygame.image.load(os.path.join('ressources', filename)).convert_alpha() 
-					
+					self.map_images[i] = pygame.image.load(os.path.join('ressources', filename)).convert_alpha()
+				
+				self.explosion_images = []
+				explosions = pygame.image.load(os.path.join('ressources', 'explosions-sprite.png')).convert_alpha()
+				ew = 16
+				for i in xrange(11):
+					self.explosion_images.append(explosions.subsurface((i*ew,0,ew,ew)))
+
 				self.background = pygame.surface.Surface(SCREEN_SIZE).convert()
 				self.background.fill((255, 255, 255))
 				pygame.draw.circle(self.background, (200, 255, 200), NEST_POSITION, int(NEST_SIZE))
@@ -74,7 +80,13 @@ class World(object):
 				surface.blit(self.background, (0, 0))
 				entity_selected = None
 				
+				''' 
+				Ugly Fix, was : 
 				for entity in self.entities.itervalues():
+				RuntimeError: dictionary changed size during iteration
+				'''
+				for id in self.entities.keys():
+						entity = self.get(id)
 						if entity.selected is True:
 							entity_selected = entity
 						entity.render(surface)
@@ -165,7 +177,14 @@ class World(object):
 								if distance < range:
 										return entity				
 				return None
-		
+
+		def get_entity_count_by_name(self, name):
+				i = 0
+				for entity in self.entities.itervalues():						
+						if entity.name == name:
+								i += 1
+				return i
+
 		def set_average_level(self):
 				i = 0
 				total_level = 0
@@ -192,6 +211,7 @@ class GameEntity(object):
 		def __init__(self, world, name, image):
 				
 				self.world = world
+				self.parent = None
 				self.name = name
 				self.location = Vector2(0, 0)
 				self.destination = Vector2(0, 0)
@@ -202,6 +222,8 @@ class GameEntity(object):
 				self.experience = 0.
 				self.selected = False
 				self.selected_image = pygame.image.load(os.path.join('ressources', 'selected.png')).convert_alpha()
+				self.attack_image = []
+				self.attack_image.append(pygame.image.load(os.path.join('ressources', 'bullet-1.png')).convert_alpha())
 				self.health = 1
 				self.max_health = 1
 				self.kills = 0
@@ -233,6 +255,35 @@ class GameEntity(object):
 				
 				self.id = 0
 				
+		def attack_animation(self, target): 
+			bullet = Bullet(self.world, self.attack_image)
+			bullet.location = Vector2(*self.location)
+			bullet.destination = Vector2(*target.location)						
+			self.world.add_entity(bullet)
+
+		def explosion_animation(self, target): 
+			if self.world.get_entity_count_by_name('explosion') < 10:
+				explosion = Explosion(self.world, self.world.explosion_images)
+				radius = int(target.diameter/2)
+				explosion.parent = target
+				explosion.location = Vector2(*target.location) + Vector2(randint(-radius, radius), randint(-radius, radius))
+				explosion.destination = Vector2(*target.destination) + Vector2(randint(-radius, radius), randint(-radius, radius))
+				explosion.speed = target.speed
+				self.world.add_entity(explosion)
+			
+			
+		def face(self):
+			''' Heading Calculation '''
+			x, y = self.location
+			x2, y2 = self.destination
+			Distance = Vector2.from_points(self.location, self.destination).get_magnitude()
+			LowerDistance = Vector2.from_points(self.location, Vector2(x2, y)).get_magnitude()
+	
+			if Distance > 0:
+				self.angle = degrees(acos(LowerDistance/Distance))
+				self.image = pygame.transform.rotate(self.image, self.angle)
+					
+					
 		def experience_attribution(self, killed_unit):
 			exp_per_hp = int(killed_unit.exp_value/killed_unit.max_health)
 
@@ -257,15 +308,7 @@ class GameEntity(object):
 				w,h = self.image.get_size()
 				self.diameter = sqrt(w**2 + h**2)/2
 				
-				''' Heading Calculation '''
-				x, y = self.location
-				x2, y2 = self.destination
-				Distance = Vector2.from_points(self.location, self.destination).get_magnitude()
-				LowerDistance = Vector2.from_points(self.location, Vector2(x2, y)).get_magnitude()
-
-				if Distance > 0:
-					self.angle = degrees(acos(LowerDistance/Distance))
-					self.image = pygame.transform.rotate(self.image, self.angle)
+				self.face()
 
 				self.last_update = t
 		
@@ -467,6 +510,7 @@ class Ant(GameEntity):
 						self.image = self.dead_image
 
 
+
 		def drop(self, surface):
 				if self.carrying > 0:
 					if self.world.ore_farmed <= self.world.ore_hull_size:
@@ -487,6 +531,7 @@ class Ant(GameEntity):
 				
 		def render(self, surface):
 				self.update(pygame.time.get_ticks())
+
 				GameEntity.render(self, surface)
 				x, y = self.location
 				w, h = self.image.get_size()
@@ -588,8 +633,11 @@ class AntStateChampHunting(State):
 				if self.ant.location.get_distance_to(champ.location) < champ.diameter:
 						''' Stoping movements if we are in range '''
 						self.ant.destination = self.ant.location
+						self.ant.attack_animation(champ)
+						
 						#print "I'm in range : %s" % champ.diameter
 						if randint(1, 3) == 1:
+								self.ant.explosion_animation(champ)
 								champ.bitten(self.ant)
 								
 								if champ.health <= 0:
@@ -646,10 +694,12 @@ class AntStateHunting(State):
 						
 				self.ant.destination = spider.location
 
-
 				if self.ant.location.get_distance_to(spider.location) < spider.diameter:
+					
+						self.ant.attack_animation(spider)
 
 						if randint(1, 3) == 1:
+								self.ant.explosion_animation(spider)
 								spider.bitten(self.ant)
 								
 								if spider.health <= 0:
@@ -749,6 +799,7 @@ class SpiderChampion(GameEntity):
 				''' Find a way to reswap original images '''
 				if self.health > 0 and self.health < int(self.max_health/3):
 						self.image = self.almost_dead_image
+						self.face()
 						self.almost_dead = True
 
 				
@@ -798,8 +849,55 @@ class SpiderChampion(GameEntity):
 						return
 				
 				GameEntity.process(self, time_passed)
-				
 
+class Explosion(GameEntity):
+		def __init__(self, world, image):
+				GameEntity.__init__(self, world, "explosion", image)
+				self.doublescale = randint(0,2) 
+
+		def update(self, t):
+			if t - self.last_update > self.delay:
+				self.frame += 1
+				''' Remove after one loop '''
+				if self.frame >= len(self.images) or self.parent is None:
+					self.frame = 0
+					self.world.remove_entity(self)
+		
+				self.image = self.images[self.frame]
+				
+				if self.doublescale is 1:
+					w,h = self.image.get_size()
+					self.image = pygame.transform.smoothscale(self.image, (w/2, h/2))
+					
+				if self.doublescale is 2:
+					w,h = self.image.get_size()
+					self.image = pygame.transform.smoothscale(self.image, (w*1.5, h*1.5))
+					
+				self.last_update = t
+
+				
+		def render(self, surface):
+				if self.parent is None:
+					self.world.remove_entity(self)
+					self.image = self.world.background
+				else:
+					self.update(pygame.time.get_ticks())
+				GameEntity.render(self, surface)
+
+						
+class Bullet(GameEntity):
+		def __init__(self, world, image):
+				GameEntity.__init__(self, world, "bullet", image)
+				self.speed = 500.
+				
+		def process(self, time_passed):
+			
+			if self.location == self.destination:
+				self.world.remove_entity(self)
+				
+			GameEntity.process(self, time_passed)
+				
+				
 class Leaf(GameEntity):
 		
 		def __init__(self, world, image):
