@@ -24,6 +24,7 @@ class World(object):
 				self.ore_farmed = 0.
 				self.paused = False
 				self.show_bars = False
+				self.damages_done = 0
 				
 				for i in xrange(0, 120):
 					self.exp_table[i] = float((i * 1000) + ((i-1)*1000))
@@ -94,22 +95,23 @@ class World(object):
 				
 				shadowMargin = 2
 				border = 1
-				pygame.draw.rect(self.background, shadowColor, (x+border+shadowMargin,y+border+shadowMargin,w-border,h-border))
-				pygame.draw.line(self.background, lightColor, (x, y), (x+w, y), border)
-				pygame.draw.line(self.background, darkColor, (x+w, y), (x+w, y+h), border)
-				pygame.draw.line(self.background, darkColor, (x+w, y+h), (x, y+h), border)
-				pygame.draw.line(self.background, lightColor, (x, y+h), (x, y), border)
-				pygame.draw.rect(self.background.convert_alpha(), emptyBackgroundColor, (x+border,y+border,w-border,h-border))
+				pygame.draw.rect(surface, shadowColor, (x+border+shadowMargin,y+border+shadowMargin,w-border,h-border))
+				pygame.draw.line(surface, lightColor, (x, y), (x+w, y), border)
+				pygame.draw.line(surface, darkColor, (x+w, y), (x+w, y+h), border)
+				pygame.draw.line(surface, darkColor, (x+w, y+h), (x, y+h), border)
+				pygame.draw.line(surface, lightColor, (x, y+h), (x, y), border)
+				pygame.draw.rect(surface, emptyBackgroundColor, (x+border,y+border,w-border,h-border))
 				
 				unit = float(h)/100.
+
 				rate = (self.ore_farmed/self.ore_hull_size) * 100
 				
 				y = y + h 
 				h = unit * rate
 				y -= h -1
 				
-				pygame.draw.line(self.background, lightColor, (x, y), (x+w-border, y), border)
-				pygame.draw.rect(self.background, backgroundColor, (x,y,w,h))
+				pygame.draw.line(surface, lightColor, (x, y), (x+w-border, y), border)
+				pygame.draw.rect(surface, backgroundColor, (x,y,w,h))
 
 
 				if entity_selected is not None:
@@ -142,20 +144,6 @@ class World(object):
 						htext = entity_selected.world.font.size('I')[1]
 						h += htext + 10
 
-					
-					''' Frame 
-					lightColor = (255, 229, 115)
-					darkColor = (255, 207, 0)
-					backgroundColor = (255, 219, 64)
-					shadowColor = (80,80,80, 127)
-					border = 2
-					pygame.draw.rect(surface, shadowColor, (x+border+5,y+border+5,w-border,h-border))
-					pygame.draw.line(surface, lightColor, (x, y), (x+w, y), border)
-					pygame.draw.line(surface, darkColor, (x+w, y), (x+w, y+h), border)
-					pygame.draw.line(surface, darkColor, (x+w, y+h), (x, y+h), border)
-					pygame.draw.line(surface, lightColor, (x, y+h), (x, y), border)
-					pygame.draw.rect(surface, backgroundColor, (x+border,y+border,w-border,h-border))
-					''' 
 					self.panel_image = pygame.image.load(os.path.join('ressources', 'panel.png')).convert_alpha()
 					w, h = self.panel_image.get_size()
 					surface.blit(self.panel_image, (x, y, w, h))
@@ -222,6 +210,7 @@ class GameEntity(object):
 				self.carrying = 0
 				self.max_carrying = 0
 				self.angle = 0.
+				self.damages_done = 0
 				
 				''' Attributes '''
 				self.strength = 0
@@ -237,10 +226,25 @@ class GameEntity(object):
 				self.original_images = image
 				self.image = self.images[self.frame]
 				
+				w,h = self.image.get_size()
+				self.diameter = sqrt(w**2 + h**2)/2
+				
 				self.brain = StateMachine()
 				
 				self.id = 0
-		
+				
+		def experience_attribution(self, killed_unit):
+			exp_per_hp = int(killed_unit.exp_value/killed_unit.max_health)
+
+			''' Distributing XP based on damage done '''
+			for id in killed_unit.shit_list:
+				unit = killed_unit.world.get(id)
+				
+				''' Some units might have died '''
+				if unit is not None:
+					unit.experience += unit.damages_done * exp_per_hp
+					print "Unit #%d is gain : %d (%d damages done)" % (unit.id, unit.damages_done * exp_per_hp, unit.damages_done)
+					unit.damages_done = 0
 
 		def update(self, t):
 			if t - self.last_update > self.delay:
@@ -248,6 +252,10 @@ class GameEntity(object):
 				if self.frame >= len(self.images):
 					self.frame = 0
 				self.image = self.images[self.frame]
+				
+				''' updating diameter '''
+				w,h = self.image.get_size()
+				self.diameter = sqrt(w**2 + h**2)/2
 				
 				''' Heading Calculation '''
 				x, y = self.location
@@ -276,14 +284,26 @@ class GameEntity(object):
 				
 				if self.world.show_bars is True:
 					unit = float(25./100.)
+					'''Level'''
+					bar_x = x-(w/4)
+					level = self.world.font.render('%s' % str(self.id), 1, (255,255,255))
+					w2,h2 = level.get_size()
+					bar_y = y - h/2 
+					surface.blit(level, (bar_x, bar_y, w2,h2))
 					
 					'''Level'''
+					bar_x = x-(w/4)
+					level = self.world.font.render('%s' % str(self.level), 1, (255,255,255))
+					w2,h2 = level.get_size()
+					bar_y = y - h 
+					surface.blit(level, (bar_x, bar_y, w2,h2))
+					'''
 					bar_x = x-(w/4)
 					level = self.world.font.render('%s %s %s %s' % (str(self.level), self.angle, self.location, self.destination), 1, (255,255,255))
 					w2,h2 = level.get_size()
 					bar_y = y - h 
 					surface.blit(level, (bar_x, bar_y, w2,h2))
-					
+					'''
 					'''Life Bar'''
 					bar_x = x - 12
 					bar_y = y + h/2
@@ -319,6 +339,15 @@ class GameEntity(object):
 							self.level_up(exceding)
 				
 				if self.speed > 0. and self.location != self.destination:
+						''' Collision Detection '''
+						collising_entity = self.world.get_close_entity(self.name, self.location, self.diameter)
+						if collising_entity is not None and collising_entity.id is not self.id:
+							#print "%s is near me : %s " % (self.id, collising_entity.id) 
+							random_offset = Vector2(randint(-20, 20), randint(-20, 20))
+							self.destination = Vector2(*self.destination) + random_offset
+							#print
+					
+						
 						vec_to_destination = self.destination - self.location				
 						distance_to_destination = vec_to_destination.get_length()
 						heading = vec_to_destination.get_normalized()
@@ -440,8 +469,9 @@ class Ant(GameEntity):
 
 		def drop(self, surface):
 				if self.carrying > 0:
-					self.world.ore_farmed += self.carrying
-					self.ore_farmed += self.carrying
+					if self.world.ore_farmed <= self.world.ore_hull_size:
+						self.world.ore_farmed += self.carrying
+						self.ore_farmed += self.carrying
 					self.experience += 300
 					self.carrying = 0
 					self.refill_life()
@@ -516,7 +546,7 @@ class AntStateExploring(State):
 						self.ant.leaf_id = leaf.id
 						return "seeking"	
 								
-				ore = self.ant.world.get_close_entity("ore", self.ant.location)				
+				ore = self.ant.world.get_close_entity("ore", self.ant.location)
 				if ore is not None:
 						self.ant.ore_id = ore.id
 						return "mining"	
@@ -554,13 +584,11 @@ class AntStateChampHunting(State):
 				
 				if champ is None:
 						return
-				w,h = champ.image.get_size()
 
-				self.ant.destination = champ.location
-				
-				if self.ant.location.get_distance_to(champ.location) < 90.:
+				if self.ant.location.get_distance_to(champ.location) < champ.diameter:
 						''' Stoping movements if we are in range '''
-						
+						self.ant.destination = self.ant.location
+						#print "I'm in range : %s" % champ.diameter
 						if randint(1, 3) == 1:
 								champ.bitten(self.ant)
 								
@@ -569,7 +597,12 @@ class AntStateChampHunting(State):
 										self.ant.world.remove_entity(champ)
 										self.got_kill = True
 										self.ant.kills += 1
-										self.ant.experience += champ.exp_value
+										champ.experience_attribution(champ)
+											
+				else:
+					#print "I'm not in range : %s" % champ.diameter
+					# moving to champs location 
+					self.ant.destination = champ.location
 				
 		def check_conditions(self):
 				if self.ant.health <= int(self.ant.max_health/10):
@@ -612,8 +645,9 @@ class AntStateHunting(State):
 						return
 						
 				self.ant.destination = spider.location
-						
-				if self.ant.location.get_distance_to(spider.location) < 15.:
+
+
+				if self.ant.location.get_distance_to(spider.location) < spider.diameter:
 
 						if randint(1, 3) == 1:
 								spider.bitten(self.ant)
@@ -688,14 +722,19 @@ class SpiderChampion(GameEntity):
 				
 				self.speed = 120. + randint(-20, 20)
 				self.level = self.world.average_level + 5
-				self.health = 50 + self.world.average_level*2
+				self.health = 150 + self.world.average_level*2
 				self.max_health = self.health
 				self.damage_done = 0
 				self.exp_value = self.exp_value+1200*self.level*1000
 				self.almost_dead = False
+				self.shit_list = {}
 				
 		def bitten(self, ant):
 				
+				if ant.id not in self.shit_list:
+					self.shit_list[ant.id] = 1
+				
+				ant.damages_done += 1
 				self.health -= (ant.strength + 1)
 				
 				if randint(1, 5) == 1:
@@ -720,7 +759,7 @@ class SpiderChampion(GameEntity):
 						print "Fight report"
 						print "Damage Done : %d" % self.damage_done
 						print "Kills : %d" % self.kills
-						print "Exp given : %d" % self.exp_value
+						print "Exp given : %d to %d attackers" % (self.exp_value, len(self.shit_list))
 						print 
 				self.speed = 0.
 				
@@ -781,7 +820,7 @@ class Mining(State):
 						return
 					
 				w,h = ore.image.get_size()			
-				if self.ant.location.get_distance_to(ore.location) < w:
+				if self.ant.location.get_distance_to(ore.location) < w*2.:
 						
 						if self.ant.carrying < self.ant.max_carrying:
 								ore.mined()
@@ -1046,7 +1085,7 @@ def run():
 					'''
 					
 			
-					if randint(1, 500) == 1:
+					if randint(1, 200) == 1:
 							champion = SpiderChampion(world, champion_images)
 							champion.location = Vector2(randint(0, w), randint(0, h))
 							random_offset = Vector2(randint(-NEST_SIZE/2, NEST_SIZE/2), randint(-NEST_SIZE/2, NEST_SIZE/2))
