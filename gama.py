@@ -6,7 +6,7 @@ NEST_SIZE = 200.
 import os
 import pygame
 from pygame.locals import *
-from math import sqrt
+from math import sqrt, acos, degrees
 from random import randint, choice
 from gameobjects.vector2 import Vector2
 
@@ -22,9 +22,10 @@ class World(object):
 				self.average_level = 1
 				self.ore_hull_size = 100000.
 				self.ore_farmed = 0.
+				self.paused = False
 				self.show_bars = False
 				
-				for i in xrange(0, 101):
+				for i in xrange(0, 120):
 					self.exp_table[i] = float((i * 1000) + ((i-1)*1000))
 					
 				self.ground_images = {}
@@ -207,6 +208,8 @@ class GameEntity(object):
 				self.location = Vector2(0, 0)
 				self.destination = Vector2(0, 0)
 				self.speed = 0.
+				self.rotation_speed = 360.
+				self.rotation = 0.
 				self.level = 0
 				self.experience = 0.
 				self.selected = False
@@ -218,6 +221,7 @@ class GameEntity(object):
 				self.exp_value = 100+ self.level* 100
 				self.carrying = 0
 				self.max_carrying = 0
+				self.angle = 0.
 				
 				''' Attributes '''
 				self.strength = 0
@@ -230,6 +234,7 @@ class GameEntity(object):
 				self.frame = 0
 				
 				self.images = image
+				self.original_images = image
 				self.image = self.images[self.frame]
 				
 				self.brain = StateMachine()
@@ -243,6 +248,17 @@ class GameEntity(object):
 				if self.frame >= len(self.images):
 					self.frame = 0
 				self.image = self.images[self.frame]
+				
+				''' Heading Calculation '''
+				x, y = self.location
+				x2, y2 = self.destination
+				Distance = Vector2.from_points(self.location, self.destination).get_magnitude()
+				LowerDistance = Vector2.from_points(self.location, Vector2(x2, y)).get_magnitude()
+
+				if Distance > 0:
+					self.angle = degrees(acos(LowerDistance/Distance))
+					self.image = pygame.transform.rotate(self.image, self.angle)
+
 				self.last_update = t
 		
 		
@@ -254,7 +270,7 @@ class GameEntity(object):
 			
 			
 		def render(self, surface):
-				self.update(pygame.time.get_ticks())	
+					
 				x, y = self.location
 				w, h = self.image.get_size()
 				
@@ -263,7 +279,7 @@ class GameEntity(object):
 					
 					'''Level'''
 					bar_x = x-(w/4)
-					level = self.world.font.render(str(self.level), 1, (255,255,255))
+					level = self.world.font.render('%s %s %s %s' % (str(self.level), self.angle, self.location, self.destination), 1, (255,255,255))
 					w2,h2 = level.get_size()
 					bar_y = y - h 
 					surface.blit(level, (bar_x, bar_y, w2,h2))
@@ -280,7 +296,7 @@ class GameEntity(object):
 					surface.fill( (180, 180, 180), (bar_x, bar_y, 25, 4))
 					surface.fill( (0, 0, 200), (bar_x, bar_y, int(self.carrying/4), 4))
 					
-					'''Exp bar'''		
+					'''Exp bar'''
 					bar_y = y - h + 12
 					surface.fill( (180, 180, 180), (bar_x, bar_y, 25, 4))
 					rate = float(float(self.experience)/float(self.world.exp_table[self.level]))*100
@@ -292,13 +308,6 @@ class GameEntity(object):
 					surface.blit(self.selected_image, (x-ws/2, (y+h/2)))
 				surface.blit(self.image, (x-w/2, y-h/2))
 				
-				'''
-				color = (20, 120, 0)
-				pygame.draw.line(surface, color, (x, y), (x+w, y), 2)
-				pygame.draw.line(surface, color, (x+w, y), (x+w, y+h), 2)
-				pygame.draw.line(surface, color, (x+w, y+h), (x, y+h), 2)
-				pygame.draw.line(surface, color, (x, y+h), (x, y), 2)
-				'''
 				
 		def process(self, time_passed):
 				
@@ -310,15 +319,6 @@ class GameEntity(object):
 							self.level_up(exceding)
 				
 				if self.speed > 0. and self.location != self.destination:
-						'''
-						w,h = self.image.get_size()
-						diameter = sqrt(w*w + h*h)
-						print diameter
-						if self.world.get_close_entity('ant', self.destination, diameter) is not None:
-							w, h = SCREEN_SIZE
-							self.destination = Vector2(randint(0, w), randint(0, h))
-							print "moving out to %s" % str(self.destination)
-						'''		
 						vec_to_destination = self.destination - self.location				
 						distance_to_destination = vec_to_destination.get_length()
 						heading = vec_to_destination.get_normalized()
@@ -426,6 +426,7 @@ class Ant(GameEntity):
 					self.experience = 0 
 			else: 
 				self.experience = 0
+				
 		def carry(self, image):
 				self.carry_image = image
 
@@ -455,7 +456,7 @@ class Ant(GameEntity):
 						self.experience += 300
 				
 		def render(self, surface):
-				
+				self.update(pygame.time.get_ticks())
 				GameEntity.render(self, surface)
 				x, y = self.location
 				w, h = self.image.get_size()
@@ -554,12 +555,12 @@ class AntStateChampHunting(State):
 				if champ is None:
 						return
 				w,h = champ.image.get_size()
-				random_offset = Vector2(96, 129)
-				self.ant.destination = Vector2(*champ.location) - random_offset
+
+				self.ant.destination = champ.location
 				
-				if self.ant.location.get_distance_to(champ.location) < 130.:
+				if self.ant.location.get_distance_to(champ.location) < 90.:
 						''' Stoping movements if we are in range '''
-						self.ant.destination = self.ant.location
+						
 						if randint(1, 3) == 1:
 								champ.bitten(self.ant)
 								
@@ -683,7 +684,7 @@ class SpiderChampion(GameEntity):
 		def __init__(self, world, image):
 				GameEntity.__init__(self, world, 'spider_champ', image)
 				self.almost_dead_image = pygame.image.load(os.path.join('ressources', 'alphabad-almost-dead.png')).convert_alpha()
-				self.dead_image = pygame.transform.flip(self.almost_dead_image, 0, 1)
+				self.dead_image = self.almost_dead_image
 				
 				self.speed = 120. + randint(-20, 20)
 				self.level = self.world.average_level + 5
@@ -705,16 +706,17 @@ class SpiderChampion(GameEntity):
 						self.kills += 1
 						self.world.remove_entity(ant)
 						self.world.set_average_level()
-				''' Find a way to reswap original images 
+						
+				''' Find a way to reswap original images '''
 				if self.health > 0 and self.health < int(self.max_health/3):
-						for i in xrange(len(self.images)):
-							self.images[i] = self.almost_dead_image
+						self.image = self.almost_dead_image
 						self.almost_dead = True
-				'''
+
 				
 				if self.health <= 0:
 						self.speed = 0.
 						self.image = self.dead_image
+						ant.destination = self.location
 						print "Fight report"
 						print "Damage Done : %d" % self.damage_done
 						print "Kills : %d" % self.kills
@@ -725,7 +727,9 @@ class SpiderChampion(GameEntity):
 
 				
 		def render(self, surface):
-				
+				if self.almost_dead is False:
+					self.update(pygame.time.get_ticks())
+					
 				GameEntity.render(self, surface)
 								
 				x, y = self.location
@@ -1009,6 +1013,8 @@ def run():
 				for event in pygame.event.get():
 				
 						if event.type == KEYDOWN:
+							if event.key == K_p:
+								world.paused = not world.paused
 							if event.key == K_l:
 								world.show_bars = not world.show_bars
 								print world.show_bars
@@ -1020,44 +1026,48 @@ def run():
 								entity = world.get_clicked_entity(pygame.Rect(pygame.mouse.get_pos() + (4,4)))
 								if entity is not None:
 									entity.select()
-								
-
-				time_passed = clock.tick(30)
-				
-				if randint(1, 500) == 1:
-						ore = Ore(world, ore_images[randint(0,5)])
-						ore.location = Vector2(randint(0, w), randint(0, h))
-						world.add_entity(ore)		
-						
-				if randint(1, 50) == 1:			
-					ant = Ant(world, ant_image)
-					ant.location = Vector2(randint(0, w), randint(0, h))
-					ant.brain.set_state("exploring")
-					world.add_entity(ant)
-		
-		
-				if randint(1, 50) == 1:
-						champion = SpiderChampion(world, champion_images)
-						champion.location = Vector2(randint(0, w), randint(0, h))
-						random_offset = Vector2(randint(-NEST_SIZE/2, NEST_SIZE/2), randint(-NEST_SIZE/2, NEST_SIZE/2))
-						champion.destination = Vector2(*NEST_POSITION) + random_offset
-						world.add_entity(champion)			
-				
-															
-				if randint(1, 10) == 1 and len(world.entities) < 100:
-						leaf = Leaf(world, leaf_image)
-						leaf.location = Vector2(randint(0, w), randint(0, h))
-						world.add_entity(leaf)
-						
-				if randint(1, 50) == 1:
-						spider = Spider(world, spider_image)
-						spider.location = Vector2(-50, randint(0, h))
-						spider.destination = Vector2(w+50, randint(0, h))						
-						world.add_entity(spider)
-				
-				world.process(time_passed)
+									
+									
+				time_passed = clock.tick(30)			
+				if world.paused is not True :
+					
+					
+					
+					if randint(1, 500) == 1:
+							ore = Ore(world, ore_images[randint(0,5)])
+							ore.location = Vector2(randint(0, w), randint(0, h))
+							world.add_entity(ore)		
+					'''		
+					if randint(1, 50) == 1:			
+						ant = Ant(world, ant_image)
+						ant.location = Vector2(randint(0, w), randint(0, h))
+						ant.brain.set_state("exploring")
+						world.add_entity(ant)
+					'''
+					
+			
+					if randint(1, 500) == 1:
+							champion = SpiderChampion(world, champion_images)
+							champion.location = Vector2(randint(0, w), randint(0, h))
+							random_offset = Vector2(randint(-NEST_SIZE/2, NEST_SIZE/2), randint(-NEST_SIZE/2, NEST_SIZE/2))
+							champion.destination = Vector2(*NEST_POSITION) + random_offset
+							world.add_entity(champion)			
+					
+																
+					if randint(1, 100) == 1 and len(world.entities) < 100:
+							leaf = Leaf(world, leaf_image)
+							leaf.location = Vector2(randint(0, w), randint(0, h))
+							world.add_entity(leaf)
+							
+					if randint(1, 50) == 1:
+							spider = Spider(world, spider_image)
+							spider.location = Vector2(-50, randint(0, h))
+							spider.destination = Vector2(w+50, randint(0, h))						
+							world.add_entity(spider)
+					
+					world.process(time_passed)
 				world.render(screen)
-				
+					
 				pygame.display.update()
 		
 if __name__ == "__main__":		
