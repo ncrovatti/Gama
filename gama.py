@@ -152,6 +152,7 @@ class World(object):
 					lines.append("Death Blows: %d" % entity_selected.kills)
 					lines.append("Ore Farmed: %d" % entity_selected.ore_farmed)
 					lines.append("Speed: %d" % entity_selected.speed)
+					lines.append("Strength: %d" % entity_selected.strength)
 					
 					'''
 					if entity_selected.brain is not None: 
@@ -199,8 +200,11 @@ class World(object):
 						if entity.name == 'ant':
 								i += 1			
 								total_level += entity.level
-								
-				self.average_level = int(total_level/i)		
+				
+				if i > 0:
+					self.average_level = int(total_level/i)
+				else:
+					print "Game Over"		
 				return None
 			
 		def get_clicked_entity(self, location):				
@@ -208,7 +212,6 @@ class World(object):
 					entity.selected = False
 					sprite_loc = Rect(entity.location,entity.image.get_size())
 					if sprite_loc.contains(location):
-						
 						return self.get(entity.id)
 					
 				return None
@@ -229,8 +232,8 @@ class GameEntity(object):
 				self.level = 0
 				self.experience = 0.
 				self.selected = False
+				self.haste = 1000/30
 				self.selected_image = pygame.image.load(os.path.join('ressources', 'selected.png')).convert_alpha()
-				self.attack_image = []
 				
 				self.attack_image = []
 				explosions = pygame.image.load(os.path.join('ressources', 'bullet-sprite.png')).convert_alpha()
@@ -255,7 +258,8 @@ class GameEntity(object):
 				
 				''' Animation '''
 				self.start = pygame.time.get_ticks()
-				self.delay = 1000 / 60
+				self.delay = 1000 / 30
+				
 				self.last_update = 0
 				self.frame = 0
 				
@@ -517,7 +521,8 @@ class Ant(GameEntity):
 		def level_up(self, exceding):
 			if self.level < 100:
 				self.level += 1
-				self.max_health += 1
+				self.max_health += 1 + 2 * self.level
+				self.strength += 2
 				self.world.set_average_level()
 				self.refill_life()
 				if exceding > 0:
@@ -530,9 +535,9 @@ class Ant(GameEntity):
 		def carry(self, image):
 				self.carry_image = image
 
-		def bitten(self):
+		def bitten(self, unit):
 				
-				self.health -= 1
+				self.health -= (unit.strength + 1)
 				if self.health <= 0:
 						self.explosed_animation(self)
 						self.speed = 0.
@@ -548,8 +553,7 @@ class Ant(GameEntity):
 					self.experience += 300
 					self.carrying = 0
 					self.refill_life()
-					self.strength += int(self.ore_farmed/100)+1
-					
+
 				
 				if self.carry_image:
 						x, y = self.location
@@ -799,10 +803,11 @@ class SpiderChampion(GameEntity):
 				self.dead_image = self.almost_dead_image
 				
 				self.speed = 120. + randint(-20, 20)
-				self.level = self.world.average_level + 5
-				self.health = 150 + self.world.average_level*2
+				self.level = self.world.average_level + randint(5, 10)
+				self.health = self.world.average_level * self.world.average_level * 2
 				self.max_health = self.health
 				self.damage_done = 0
+				self.strength = int(self.world.average_level/4)
 				self.exp_value = self.exp_value+1200*self.level*1000
 				self.almost_dead = False
 				self.shit_list = {}
@@ -811,18 +816,19 @@ class SpiderChampion(GameEntity):
 				
 				if ant.id not in self.shit_list:
 					self.shit_list[ant.id] = 1
-				
-				ant.damages_done += 1
-				self.health -= (ant.strength + 1)
-				
-				if randint(1, 5) == 1:
-					ant.bitten()
-					self.damage_done += 1
-					
-					if ant.health <= 0:
-						self.kills += 1
-						self.world.remove_entity(ant)
-						self.world.set_average_level()
+
+				damages = (ant.strength + 1)
+				ant.damages_done += damages
+				self.health -= damages
+
+				if randint(1,6) is 1:
+					ant.bitten(self)
+					self.damages_done += (self.strength + 1)
+
+				if ant.health <= 0:
+					self.kills += 1
+					self.world.remove_entity(ant)
+					self.world.set_average_level()
 						
 				''' Find a way to reswap original images '''
 				if self.health > 0 and self.health < int(self.max_health/3):
@@ -830,13 +836,12 @@ class SpiderChampion(GameEntity):
 						self.face()
 						self.almost_dead = True
 
-				
 				if self.health <= 0:
 						self.speed = 0.
 						self.image = self.dead_image
 						ant.destination = self.location
 						print "Fight report"
-						print "Damage Done : %d" % self.damage_done
+						print "Damage Done : %d" % self.damages_done
 						print "Kills : %d" % self.kills
 						print "Exp given : %d to %d attackers" % (self.exp_value, len(self.shit_list))
 						print 
@@ -847,7 +852,7 @@ class SpiderChampion(GameEntity):
 		def render(self, surface):
 				if self.almost_dead is False:
 					self.update(pygame.time.get_ticks())
-					
+				
 				GameEntity.render(self, surface)
 								
 				x, y = self.location
@@ -919,7 +924,7 @@ class Bullet(GameEntity):
 		def __init__(self, world, image):
 				GameEntity.__init__(self, world, "bullet", image)
 				self.decorative = True
-				self.speed = 500.
+				self.speed = 140.
 				self.delay = 1000 / 30
 				
 		def update(self, t):
@@ -943,7 +948,8 @@ class Leaf(GameEntity):
 		
 		def __init__(self, world, image):
 				GameEntity.__init__(self, world, "leaf", image)
-
+				self.decorative = True
+				 
 class Mining(State):
 		def __init__(self, ant):
 				
@@ -958,19 +964,18 @@ class Mining(State):
 				if ore is None:
 						return
 					
-				w,h = ore.image.get_size()			
-				if self.ant.location.get_distance_to(ore.location) < w*2.:
-						
+				self.ant.destination = ore.location
+				if self.ant.location.get_distance_to(ore.location) < ore.diameter:
+						self.ant.destination = self.ant.location
 						if self.ant.carrying < self.ant.max_carrying:
 								ore.mined()
-								self.ant.carrying += 1
+								self.ant.carrying += 1 * int(self.ant.level/10)
 						else:
 								self.max_charge = True
 								
 						if ore.health <= 0:								
 								self.ant.world.remove_entity(ore)
-							
-														
+				
 				
 		def check_conditions(self):
 				
@@ -1003,6 +1008,7 @@ class Ore(GameEntity):
 				GameEntity.__init__(self, world, "ore", image)
 				self.health = 2500
 				self.max_health = 2500
+				self.decorative = True
 				
 		def mined(self):
 			self.health -= 1
@@ -1031,18 +1037,21 @@ class Spider(GameEntity):
 				self.dead_image = pygame.transform.flip(image[0], 0, 1)
 				self.speed = 50. + randint(-20, 20)
 				self.level = self.world.average_level
-				self.health = 5 + self.world.average_level
-				self.max_health = 5 + self.world.average_level
+				self.health = 10 + int(self.world.average_level*2)
+				self.max_health = self.health
 				self.exp_value = 600
 				
 		def bitten(self, ant):
 				
-				self.health -= 1
+				damages = (ant.strength + 1)
+				ant.damages_done += damages
+				self.health -= damages
 				
-				if randint(1, 3) == 1:
-					ant.bitten()
+				if randint(1, 6) == 1:
+					ant.bitten(self)
 					if ant.health <= 0:
 						self.world.remove_entity(ant)
+						self.world.set_average_level()
 						
 				if self.health <= 0:
 						self.speed = 0.
