@@ -41,23 +41,35 @@ class World(object):
 					filename = 'r%d.png' % i
 					self.map_images[i] = pygame.image.load(os.path.join('ressources', filename)).convert_alpha()
 				
-				self.explosion_images = []
-				explosions = pygame.image.load(os.path.join('ressources', 'explosions-sprite.png')).convert_alpha()
-				ew = 16
-				for i in xrange(11):
-					self.explosion_images.append(explosions.subsurface((i*ew,0,ew,ew)))
-
-				self.explosed_images = []
-				explosions = pygame.image.load(os.path.join('ressources', 'explosed-sprite.png')).convert_alpha()
-				w, h = explosions.get_size()
-				ew = 20
-				for i in xrange(int(w/ew)):
-					self.explosed_images.append(explosions.subsurface((i*ew,0,ew,ew)))
+				self.explosion_images = self.load_sliced_sprites(16, 16, 'explosions-sprite.png')
+				self.explosed_images = self.load_sliced_sprites(20, 20, 'explosed-sprite.png')
 
 				self.background = pygame.surface.Surface(SCREEN_SIZE).convert()
 				self.background.fill((255, 255, 255))
 				pygame.draw.circle(self.background, (200, 255, 200), NEST_POSITION, int(NEST_SIZE))
 	
+		def load_sliced_sprites(self, w, h, filename):
+				'''
+				Sample 5 frames Sprite representation:
+				------------------------------------------
+				l   1    l   2   l   3   l   4   l   5   l
+				l 16x16  l 16x16 l 16x16 l 16x16 l 16x16 l
+				l        l			 l       l       l       l
+				------------------------------------------
+				Specs : 
+					Master can be any height.
+					Sprites frames width must be the same width
+					Master width must be len(frames)*frame.width
+				'''
+				images = []
+				master_image = pygame.image.load(os.path.join('ressources', filename)).convert_alpha()
+				""" Needs Work:
+				I'm overridding 'h' argument here 
+				"""
+				master_width, h = master_image.get_size()
+				for i in xrange(int(master_width/w)):
+					images.append(master_image.subsurface((i*w,0,w,h)))
+				return images
 			
 		def add_entity(self, entity):
 
@@ -235,12 +247,7 @@ class GameEntity(object):
 				self.haste = 1000/30
 				self.selected_image = pygame.image.load(os.path.join('ressources', 'selected.png')).convert_alpha()
 				
-				self.attack_image = []
-				explosions = pygame.image.load(os.path.join('ressources', 'bullet-sprite.png')).convert_alpha()
-				w, h = explosions.get_size()
-				ew = 6
-				for i in xrange(int(w/ew)):
-					self.attack_image.append(explosions.subsurface((i*ew,0,ew,h)))
+				self.attack_image = self.world.load_sliced_sprites(6, 20, 'bullet-sprite.png')
 					
 				self.health = 1
 				self.max_health = 1
@@ -335,7 +342,7 @@ class GameEntity(object):
 					self.frame = 0
 				self.image = self.images[self.frame]
 				
-				''' updating diameter '''
+				''' updating diameter because surface size might have changed after rotation'''
 				w,h = self.image.get_size()
 				self.diameter = sqrt(w**2 + h**2)/2
 				
@@ -830,8 +837,7 @@ class SpiderChampion(GameEntity):
 					self.kills += 1
 					self.world.remove_entity(ant)
 					self.world.set_average_level()
-						
-				''' Find a way to reswap original images '''
+
 				if self.health > 0 and self.health < int(self.max_health/3):
 						self.image = self.almost_dead_image
 						self.face()
@@ -928,7 +934,7 @@ class Bullet(GameEntity):
 		def __init__(self, world, image):
 				GameEntity.__init__(self, world, "bullet", image)
 				self.decorative = True
-				self.speed = 140.
+				self.speed = 200.
 				self.delay = 1000 / 30
 				
 		def update(self, t):
