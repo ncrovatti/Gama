@@ -935,7 +935,7 @@ class Bullet(GameEntity):
 				GameEntity.__init__(self, world, "bullet", image)
 				self.decorative = True
 				self.speed = 200.
-				self.delay = 1000 / 30
+				self.delay = 1000 / 30 
 				
 		def update(self, t):
 			if t - self.last_update > self.delay:
