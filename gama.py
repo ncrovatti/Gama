@@ -9,6 +9,7 @@ from pygame.locals import *
 from math import sqrt, acos, degrees
 from random import randint, choice, random
 from gameobjects.vector2 import Vector2
+from threading import Thread
 
 class World(object):
 		
@@ -41,9 +42,11 @@ class World(object):
 					filename = 'r%d.png' % i
 					self.map_images[i] = pygame.image.load(os.path.join('ressources', filename)).convert_alpha()
 				
-				self.explosion_images = self.load_sliced_sprites(16, 16, 'explosions-sprite.png')
-				self.explosed_images = self.load_sliced_sprites(20, 20, 'explosed-sprite.png')
-
+				self.explosion_images 			= self.load_sliced_sprites(16, 16, 'explosions-sprite.png')
+				self.explosed_images 				= self.load_sliced_sprites(20, 20, 'explosed-sprite.png')
+				self.small_explosed_images 	= self.load_sliced_sprites(17, 16, 'explosions-sprite3-10steps-w17xh16.png')
+				self.attack_image 					= self.load_sliced_sprites(6, 20, 'bullet-sprite.png')
+				
 				self.background = pygame.surface.Surface(SCREEN_SIZE).convert()
 				self.background.fill((255, 255, 255))
 				pygame.draw.circle(self.background, (200, 255, 200), NEST_POSITION, int(NEST_SIZE))
@@ -111,6 +114,7 @@ class World(object):
 						entity.render(surface)
 
 				''' Ore tank ''' 
+				'''
 				x, y = NEST_POSITION 
 				x = x - 20
 				w = 20
@@ -123,7 +127,7 @@ class World(object):
 				emptyBackgroundColor = (154, 192, 212, 80)
 				shadowColor = (80,80,80, 127)
 
-				
+
 				shadowMargin = 2
 				border = 1
 				pygame.draw.rect(surface, shadowColor, (x+border+shadowMargin,y+border+shadowMargin,w-border,h-border))
@@ -143,7 +147,7 @@ class World(object):
 				
 				pygame.draw.line(surface, lightColor, (x, y), (x+w-border, y), border)
 				pygame.draw.rect(surface, backgroundColor, (x,y,w,h))
-
+				'''
 
 				if entity_selected is not None:
 					x, y = SCREEN_SIZE
@@ -233,6 +237,9 @@ class GameEntity(object):
 		def __init__(self, world, name, image):
 				
 				self.world = world
+				self.pause = False
+				self.static = False
+				self.collising_unit_id = None
 				self.parent = None
 				self.decorative = False
 				self.name = name
@@ -246,9 +253,8 @@ class GameEntity(object):
 				self.selected = False
 				self.haste = 1000/30
 				self.selected_image = pygame.image.load(os.path.join('ressources', 'selected.png')).convert_alpha()
+				self.attack_image = self.world.attack_image
 				
-				self.attack_image = self.world.load_sliced_sprites(6, 20, 'bullet-sprite.png')
-					
 				self.health = 1
 				self.max_health = 1
 				self.kills = 0
@@ -291,15 +297,19 @@ class GameEntity(object):
 				bullet.location = Vector2(*self.location) + Vector2(randint(-radius, radius), randint(-radius, radius))
 				bullet.destination = Vector2(*target.location) + Vector2(randint(-target_radius, target_radius), randint(-target_radius, target_radius))
 				self.world.add_entity(bullet)
-			
-		def explosed_animation(self, target): 
-			explosion = Explosion(self.world, self.world.explosed_images)
+		
+		def explosed_animation(self, target, images=False, scale=1): 
+			if images is False:
+				images = self.world.explosed_images
+				
+			explosion = Explosion(self.world, images)
 			explosion.location = Vector2(*target.location)			
 			explosion.destination = Vector2(*target.location)
-			explosion.doublescale = 1
+			explosion.doublescale = scale
 			self.world.add_entity(explosion)
 			
 		def explosion_animation(self, target): 
+
 			if self.world.get_entity_count_by_name('explosion') < 10:
 				explosion = Explosion(self.world, self.world.explosion_images)
 				radius = int(target.diameter/2)
@@ -336,6 +346,7 @@ class GameEntity(object):
 					unit.damages_done = 0
 
 		def update(self, t):
+			
 			if t - self.last_update > self.delay:
 				self.frame += 1
 				if self.frame >= len(self.images):
@@ -363,7 +374,10 @@ class GameEntity(object):
 				x, y = self.location
 				w, h = self.image.get_size()
 				
+			
 				if self.world.show_bars is True and self.decorative is False:
+					pygame.draw.line(surface, (255,255,255), self.location, self.destination, 1)
+					
 					unit = float(25./100.)
 					'''Level'''
 					bar_x = x-(w/4)
@@ -409,7 +423,35 @@ class GameEntity(object):
 					surface.blit(self.selected_image, (x-ws/2, (y+h/2)))
 				surface.blit(self.image, (x-w/2, y-h/2))
 				
-				
+		def collising(self, unit):
+			if self.id == unit.id: return False
+
+			left1, top1 = self.location
+			w1, h1 = self.image.get_size()
+			
+			right1 = left1 + w1
+			bottom1 = top1 + h1
+		
+			left2, top2 = unit.location
+			w2, h2 = unit.image.get_size()
+			
+			right2 = left2 + w2
+			bottom2 = top2 + h2
+			
+			#print "Comparing %s %s %s %s with %s %s %s %s" % (left1, top1, right1, bottom1, left2, top2, right2, bottom2)
+			
+			if bottom1 < top2: return False
+			if top1 > bottom2: return False
+			
+			if right1 < left2: return False
+			if left1 > right2: return False
+			
+			#print "Not Collising"
+			return True;
+			
+
+
+
 		def process(self, time_passed):
 				
 				self.brain.think()
@@ -418,22 +460,18 @@ class GameEntity(object):
 						if self.experience >= self.world.exp_table[self.level]:
 							exceding = self.experience - self.world.exp_table[self.level]
 							self.level_up(exceding)
+
 				
-				if self.speed > 0. and self.location != self.destination:
-						''' Collision Detection '''
-						collising_entity = self.world.get_close_entity(self.name, self.location, self.diameter)
-						if collising_entity is not None and collising_entity.id is not self.id:
-							#print "%s is near me : %s " % (self.id, collising_entity.id) 
-							random_offset = Vector2(randint(-20, 20), randint(-20, 20))
-							self.destination = Vector2(*self.destination) + random_offset
-							#print
-					
-						
+				if self.speed > 0. and self.location != self.destination and not self.pause:
+									
 						vec_to_destination = self.destination - self.location				
 						distance_to_destination = vec_to_destination.get_length()
 						heading = vec_to_destination.get_normalized()
 						travel_distance = min(distance_to_destination, time_passed * self.speed)
 						self.location += travel_distance * heading
+
+							
+
 
 class State(object):
 		
@@ -500,13 +538,15 @@ class Ant(GameEntity):
 				hunting_state = AntStateHunting(self)
 				champ_hunting_state = AntStateChampHunting(self)
 				mining_state = Mining(self)
-							
+				bypass_state = Bypass(self)
+				
 				self.brain.add_state(exploring_state)
 				self.brain.add_state(seeking_state)
 				self.brain.add_state(delivering_state)
 				self.brain.add_state(hunting_state)
 				self.brain.add_state(champ_hunting_state)
 				self.brain.add_state(mining_state)
+				self.brain.add_state(bypass_state)
 				
 				self.dead_image = pygame.transform.flip(image[0], 0, 1)
 				self.health = 5
@@ -517,6 +557,7 @@ class Ant(GameEntity):
 				self.delay = 1000 / 30
 				
 				self.kills = 0
+				self.explosed_images = self.world.load_sliced_sprites(33, 31, 'explosions-sprite2-12steps-w33xh31.png')
 				
 				''' Experience '''
 				self.experience = 0
@@ -546,7 +587,7 @@ class Ant(GameEntity):
 				
 				self.health -= (unit.strength + 1)
 				if self.health <= 0:
-						self.explosed_animation(self)
+						self.explosed_animation(self, self.explosed_images)
 						self.speed = 0.
 						self.image = self.dead_image
 
@@ -625,7 +666,7 @@ class AntStateExploring(State):
 						self.random_destination()
 						
 		def check_conditions(self):
-			
+
 				leaf = self.ant.world.get_close_entity("leaf", self.ant.location)				
 				if leaf is not None:
 						self.ant.leaf_id = leaf.id
@@ -647,6 +688,15 @@ class AntStateExploring(State):
 						if self.ant.location.get_distance_to(spider.location) < 100.:
 								self.ant.spider_id = spider.id
 								return "hunting"
+							
+				''' Collision Detection '''
+				
+				for unit in self.ant.world.entities.itervalues():
+					if unit.decorative is False and self.ant.decorative is False:
+						if self.ant.collising(unit) and self.ant.collising_unit_id is None:
+							#print "%s (%s) is near me : %s (%s) " % (unit.id, unit.name, self.ant.id, self.ant.name) 
+							self.ant.collising_unit_id = unit.id
+							return "bypass"
 				
 				return None
 		
@@ -787,7 +837,7 @@ class AntStateSeeking(State):
 				if leaf is None:
 						return "exploring"
 				
-				if self.ant.location.get_distance_to(leaf.location) < 5.0:
+				if self.ant.location.get_distance_to(leaf.location) < 50.0:
 				
 						self.ant.carry(leaf.image)
 						self.ant.world.remove_entity(leaf)
@@ -910,14 +960,13 @@ class Explosion(GameEntity):
 		
 				self.image = self.images[self.frame]
 				
-				modifier = 0
+				modifier = 1
 				w,h = self.image.get_size()
 				if self.doublescale is 1:
 					modifier = 2 
 					modifier += random()
 					
 				if self.doublescale is 2:
-					modifier = 1 
 					modifier += random()
 					
 				self.image = pygame.transform.smoothscale(self.image, (w*modifier, h*modifier))
@@ -954,12 +1003,61 @@ class Bullet(GameEntity):
 			GameEntity.process(self, time_passed)
 				
 				
+class Building(GameEntity):
+		
+		def __init__(self, world, image):
+				GameEntity.__init__(self, world, "building", image)
+				self.static = True
+				self.speed = 0
+				self.delay = 1000/2
+					
+		def render(self, surface):
+			self.update(pygame.time.get_ticks())
+			GameEntity.render(self, surface)
+				
 class Leaf(GameEntity):
 		
 		def __init__(self, world, image):
 				GameEntity.__init__(self, world, "leaf", image)
 				self.decorative = True
-				 
+				
+				
+class Bypass(State):
+		def __init__(self, ant):
+				
+				State.__init__(self, "bypass")
+				self.ant = ant
+				
+		def do_actions(self):
+				
+				unit = self.ant.world.get(self.ant.collising_unit_id)
+			
+				if unit is None:
+						return "exploring"
+					
+				if unit.destination != unit.location and unit.destination != Vector2(0, 0):
+						self.ant.pause = True
+				
+				
+		def check_conditions(self):
+				
+				unit = self.ant.world.get(self.ant.collising_unit_id)
+						
+				if unit is None or unit.pause is True:
+						return "exploring"
+				
+				if self.ant.collising(unit) is False:
+						return "exploring"
+				
+				return None
+
+		def exit_actions(self):
+				self.ant.pause = False
+				self.ant.collising_unit_id = False
+				#self.ant.destination = self.ant.old_destination
+				#self.ant.old_destination = None
+							
+							
 class Mining(State):
 		def __init__(self, ant):
 				
@@ -1105,24 +1203,24 @@ def run():
 				screen.blit(Background, graphRect)
 				
 		map = [
-			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   1,   2,   3,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   5,   6,   7,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   5,   6,   9,   3,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   10,  6,   6,   7,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   4,   10,  11,  12,  4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   1,   2,   3,   4,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   5,   6,   7,   4,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   5,   6,   9,   3,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   10,  6,   6,   7,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   4,   10,  11,  12,  4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   5,   6,   7,   4,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   5,   6,   9,   3,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   10,  6,   6,   7,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   10,  11,  12],
+			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   1,   2,   3,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   5,   6,   7,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   5,   6,   9,   3,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   10,  6,   6,   7,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   4,   10,  11,  12,  4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   1,   2,   3,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   5,   6,   7,   4,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   5,   6,   9,   3,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   10,  6,   6,   7,   4,   4,   4,   4,   4,   4],
+			[4,   4,   4,   4,   4,   4,   4,   4,   4,   10,  11,  12,  4,   4,   4,   4,   4,   4],
 		];
 		
 		x = 0
@@ -1148,6 +1246,12 @@ def run():
 		bgStr = pygame.image.tostring(screen, 'RGB')
 
 		world.background = pygame.image.fromstring(bgStr, SCREEN_SIZE, 'RGB')
+		
+		base_images = world.load_sliced_sprites(113, 145, 'collony-base-1step-w113xh145.png')
+
+		base = Building(world, base_images)
+		base.location = Vector2(*NEST_POSITION)
+		world.add_entity(base)
 		
 		clock = pygame.time.Clock()
 		
