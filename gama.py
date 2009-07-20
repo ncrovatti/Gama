@@ -69,9 +69,9 @@ class World(object):
 				'''
 				Sample 5 frames Sprite representation:
 				------------------------------------------
-				l	 1		l	 2	 l	 3	 l	 4	 l	 5	 l
-				l 16x16	l 16x16 l 16x16 l 16x16 l 16x16 l
-				l				l			 l			 l			 l			 l
+				l   1    l   2   l   3   l   4   l   5   l
+				l 16x16  l 16x16 l 16x16 l 16x16 l 16x16 l
+				l        l       l       l       l       l
 				------------------------------------------
 				Specs : 
 					Master can be any height.
@@ -256,8 +256,6 @@ class GameEntity(object):
 				self.static = False
 				self.route = None
 				self.heading = Vector2(0, 0)
-				self.collising_unit_id = None
-				self.parent = None
 				self.decorative = False
 				self.name = name
 				self.location = Vector2(0, 0)
@@ -447,35 +445,6 @@ class GameEntity(object):
 					ws, hs = self.selected_image.get_size()
 					surface.blit(self.selected_image, (x-ws/2, (y+h/2)))
 				surface.blit(self.image, (x-w/2, y-h/2))
-				
-		def collising(self, unit):
-			if self.id == unit.id: return False
-
-			left1, top1 = self.location
-			w1, h1 = self.image.get_size()
-			
-			right1 = left1 + w1
-			bottom1 = top1 + h1
-		
-			left2, top2 = unit.location
-			w2, h2 = unit.image.get_size()
-			
-			right2 = left2 + w2
-			bottom2 = top2 + h2
-			
-			#print "Comparing %s %s %s %s with %s %s %s %s" % (left1, top1, right1, bottom1, left2, top2, right2, bottom2)
-			
-			if bottom1 < top2: return False
-			if top1 > bottom2: return False
-			
-			if right1 < left2: return False
-			if left1 > right2: return False
-			
-			#print "Not Collising"
-			return True;
-			
-
-
 
 		def process(self, time_passed):
 				
@@ -485,53 +454,69 @@ class GameEntity(object):
 						if self.experience >= self.world.exp_table[self.level]:
 							exceding = self.experience - self.world.exp_table[self.level]
 							self.level_up(exceding)
-
-				loc_coord = pos_to_coord(self.location)
-				loc_square = self.world.grid.get(loc_coord)
-				if loc_square is not None:
-					loc_square.blocked =  False
-													
-				if self.decorative is False:
-
-					
-					if self.route:
-						vec_to_destination = coord_to_pos(self.route[-1]) - self.location				
-						distance_to_destination = vec_to_destination.get_length()
-						self.heading = vec_to_destination.get_normalized()
-						travel_distance = min(distance_to_destination, time_passed * self.speed)
-						self.location += travel_distance * self.heading
-						self.route = self.route[:-1]
-					else:
-						if self.speed > 0. and self.location != self.destination and not self.pause and not self.route:
-							vec_to_destination = self.destination - self.location				
-							distance_to_destination = vec_to_destination.get_length()
-							self.heading = vec_to_destination.get_normalized()
-							travel_distance = min(distance_to_destination, time_passed * self.speed)
-							self.location += travel_distance * self.heading
-
-					loc_coord = pos_to_coord(self.location)
-					dest_coord = pos_to_coord(self.destination)
-
-					loc_square = self.world.grid.get(loc_coord)
+							
+				''' 
+				Might changes Rules to pathfind the nearest square 
+				if the one we want to stop on if already taken
+				'''
+				
+				'''
+				from_loc = pos_to_coord(self.location)
+				to_loc = pos_to_coord(self.destination)
+				'''
+				if self.speed > 0. and self.location != self.destination:
+					vec_to_destination 				= self.destination - self.location				
+					distance_to_destination 	= vec_to_destination.get_length()
+					self.heading 							= vec_to_destination.get_normalized()
+					travel_distance 					= min(distance_to_destination, time_passed * self.speed)
+					self.location 						+= travel_distance * self.heading
+					'''
+					loc_square = self.world.grid.get(from_loc)
 					
 					if loc_square is not None:
-						if loc_square.blocked is True:
-							self.route = self.world.grid.find_route(loc_coord, dest_coord)
-						loc_square.blocked = True										
-						"""
-						self.destination = Vector2( *coord_to_pos(self.route[0]) )
-						self.heading = Vector2.from_points(self.location, self.destination)
-						distance = self.heading.get_length()
-						self.heading.normalize()			 
-						
-						if self.speed * time_passed > distance:
-								movement = self.heading * distance 
-								self.route = self.route[1:]
+						if loc_square.blocked is True and loc_square.locked_by != self.id:
+							self.route = self.world.grid.find_route(from_loc, to_loc)
+							print "Square at %s is locked by %s" % (from_loc, loc_square.locked_by)
 						else:
-								movement = self.heading * self.speed * time_passed
-								
-						self.location += movement 
-						"""		
+							print "%s Moving to %s" % (self.id, str(to_loc))
+							loc_square.blocked = True
+							loc_square.locked_by = self.id
+											
+					if self.route is not None:
+						#print self.id, self.route
+						self.destination = Vector2(*coord_to_pos(self.route[0]))
+						to_loc = self.route[0]
+						#print "%i (%s) starts from %s (%s). Next Step is %s (%s) and is not Reached"% (self.id, self.location, from_loc, coord_to_pos(from_loc), to_loc, coord_to_pos(to_loc))
+						#print  self.id, self.location, from_loc, to_loc, self.route
+						
+					if from_loc == to_loc and len(self.route) > 1:
+						print "%s has arrived to %s" % (self.id, str(to_loc))
+						loc_square = self.world.grid.get(self.route[0])
+						loc_square.blocked = False
+						loc_square.locked_by = None
+						
+						
+						self.route = self.route[1:]
+						
+						if self.destination == self.location and len(self.route) < 1:
+							self.route = None
+							return
+						else:
+							print self.destination, self.location, len(self.route), self.route
+							self.destination = Vector2(*coord_to_pos(self.route[0]))
+						
+						#print "%i Removing %s : location reached (%s) vs (%s)" % (self.id, str(self.route[0]), coord_to_pos(self.route[0]), self.route) 
+						#print "%i Next step is %s" % (self.id, str(self.route[0]))
+						
+					'''
+
+
+					'''
+					If self.location == self.destination and loc_square is blocked :
+						Find nearest free Square. 
+					'''
+						
+
 
 
 class State(object):
@@ -599,7 +584,6 @@ class Ant(GameEntity):
 				hunting_state = AntStateHunting(self)
 				champ_hunting_state = AntStateChampHunting(self)
 				mining_state = Mining(self)
-				bypass_state = Bypass(self)
 				
 				self.brain.add_state(exploring_state)
 				self.brain.add_state(seeking_state)
@@ -607,7 +591,6 @@ class Ant(GameEntity):
 				self.brain.add_state(hunting_state)
 				self.brain.add_state(champ_hunting_state)
 				self.brain.add_state(mining_state)
-				self.brain.add_state(bypass_state)
 				
 				self.dead_image = pygame.transform.flip(image[0], 0, 1)
 				self.health = 5
@@ -749,16 +732,7 @@ class AntStateExploring(State):
 						if self.ant.location.get_distance_to(spider.location) < 100.:
 								self.ant.spider_id = spider.id
 								return "hunting"
-							
-				''' Collision Detection '''
-				
-				for unit in self.ant.world.entities.itervalues():
-					if unit.decorative is False and self.ant.decorative is False:
-						if self.ant.collising(unit) and self.ant.collising_unit_id is None:
-							#print "%s (%s) is near me : %s (%s) " % (unit.id, unit.name, self.ant.id, self.ant.name) 
-							self.ant.collising_unit_id = unit.id
-							return "bypass"
-				
+
 				return None
 		
 		def entry_actions(self):
@@ -1071,8 +1045,8 @@ class Building(GameEntity):
 				self.static = True
 				self.speed = 0
 				self.delay = 1000/2
-
-					
+				
+		
 		def render(self, surface):
 			self.update(pygame.time.get_ticks())
 			GameEntity.render(self, surface)
@@ -1082,42 +1056,6 @@ class Leaf(GameEntity):
 		def __init__(self, world, image):
 				GameEntity.__init__(self, world, "leaf", image)
 				self.decorative = True
-				
-				
-class Bypass(State):
-		def __init__(self, ant):
-				
-				State.__init__(self, "bypass")
-				self.ant = ant
-				
-		def do_actions(self):
-				
-				unit = self.ant.world.get(self.ant.collising_unit_id)
-			
-				if unit is None:
-						return "exploring"
-					
-				if unit.destination != unit.location and unit.destination != Vector2(0, 0):
-						self.ant.pause = True
-				
-				
-		def check_conditions(self):
-				
-				unit = self.ant.world.get(self.ant.collising_unit_id)
-						
-				if unit is None or unit.pause is True:
-						return "exploring"
-				
-				if self.ant.collising(unit) is False:
-						return "exploring"
-				
-				return None
-
-		def exit_actions(self):
-				self.ant.pause = False
-				self.ant.collising_unit_id = False
-				#self.ant.destination = self.ant.old_destination
-				#self.ant.old_destination = None
 							
 							
 class Mining(State):
@@ -1247,6 +1185,7 @@ class Square(object):
 				
 				self.coord = coord
 				self.blocked = False
+				self.locked_by = None
 				self.parent = None
 				self.marked = False		
 				
@@ -1394,24 +1333,24 @@ def run():
 				screen.blit(Background, graphRect)
 				
 		map = [
-			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 5,	 6,	 7,	 4,	 4],
-			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 5,	 6,	 9,	 3,	 4],
-			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 10,	6,	 6,	 7,	 4],
-			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 10,	11,	12],
-			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
-			[4,	 4,	 4,	 1,	 2,	 3,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
-			[4,	 4,	 4,	 5,	 6,	 7,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
-			[4,	 4,	 4,	 5,	 6,	 9,	 3,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
-			[4,	 4,	 4,	 10,	6,	 6,	 7,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
-			[4,	 4,	 4,	 4,	 10,	11,	12,	4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
-			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
-			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
-			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
-			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 1,	 2,	 3,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
-			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 5,	 6,	 7,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
-			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 5,	 6,	 9,	 3,	 4,	 4,	 4,	 4,	 4,	 4],
-			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 10,	6,	 6,	 7,	 4,	 4,	 4,	 4,	 4,	 4],
-			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 10,	11,	12,	4,	 4,	 4,	 4,	 4,	 4],
+			[4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	5,	6,	7,	4,	4],
+			[4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	5,	6,	9,	3,	4],
+			[4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	10,	6,	6,	7,	4],
+			[4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	10,	11,	12],
+			[4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4],
+			[4,	4,	4,	1,	2,	3,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4],
+			[4,	4,	4,	5,	6,	7,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4],
+			[4,	4,	4,	5,	6,	9,	3,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4],
+			[4,	4,	4,	10,	6,	6,	7,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4],
+			[4,	4,	4,	4,	10,	11,	12,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4],
+			[4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4],
+			[4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4],
+			[4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,	4],
+			[4,	4,	4,	4,	4,	4,	4,	4,	1,	2,	3,	4,	4,	4,	4,	4,	4,	4],
+			[4,	4,	4,	4,	4,	4,	4,	4,	5,	6,	7,	4,	4,	4,	4,	4,	4,	4],
+			[4,	4,	4,	4,	4,	4,	4,	4,	5,	6,	9,	3,	4,	4,	4,	4,	4,	4],
+			[4,	4,	4,	4,	4,	4,	4,	4,	10,	6,	6,	7,	4,	4,	4,	4,	4,	4],
+			[4,	4,	4,	4,	4,	4,	4,	4,	4,	10,	11,	12,	4,	4,	4,	4,	4,	4],
 		];
 		
 		x = 0
