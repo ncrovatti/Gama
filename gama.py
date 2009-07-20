@@ -1,15 +1,28 @@
-SCREEN_SIZE = (1024, 700)
+SCREEN_SIZE = (1024, 701)
 NEST_POSITION = (320, 240)
+GRID_SQUARE_SIZE = (32, 32)
 ANT_COUNT = 20
 NEST_SIZE = 200.
 
 import os
 import pygame
 from pygame.locals import *
-from math import sqrt, acos, degrees
+from math import sqrt, acos, degrees, atan2
 from random import randint, choice, random
 from gameobjects.vector2 import Vector2
 from threading import Thread
+
+
+def pos_to_coord(pos):				
+		coord_x = pos[0] / GRID_SQUARE_SIZE[0]
+		coord_y = pos[1] / GRID_SQUARE_SIZE[1]				
+		return (int(coord_x), int(coord_y))
+
+def coord_to_pos(coord):
+		pos_x = coord[0] * GRID_SQUARE_SIZE[0]
+		pos_y = coord[1] * GRID_SQUARE_SIZE[1]
+		return (pos_x, pos_y)
+
 
 class World(object):
 		
@@ -26,6 +39,7 @@ class World(object):
 				self.paused = False
 				self.show_bars = False
 				self.damages_done = 0
+				self.grid = None
 				
 				for i in xrange(0, 120):
 					self.exp_table[i] = float((i * 1000) + ((i-1)*1000))
@@ -55,9 +69,9 @@ class World(object):
 				'''
 				Sample 5 frames Sprite representation:
 				------------------------------------------
-				l   1    l   2   l   3   l   4   l   5   l
-				l 16x16  l 16x16 l 16x16 l 16x16 l 16x16 l
-				l        l			 l       l       l       l
+				l	 1		l	 2	 l	 3	 l	 4	 l	 5	 l
+				l 16x16	l 16x16 l 16x16 l 16x16 l 16x16 l
+				l				l			 l			 l			 l			 l
 				------------------------------------------
 				Specs : 
 					Master can be any height.
@@ -148,7 +162,8 @@ class World(object):
 				pygame.draw.line(surface, lightColor, (x, y), (x+w-border, y), border)
 				pygame.draw.rect(surface, backgroundColor, (x,y,w,h))
 				'''
-
+				
+				
 				if entity_selected is not None:
 					x, y = SCREEN_SIZE
 					
@@ -239,6 +254,8 @@ class GameEntity(object):
 				self.world = world
 				self.pause = False
 				self.static = False
+				self.route = None
+				self.heading = Vector2(0, 0)
 				self.collising_unit_id = None
 				self.parent = None
 				self.decorative = False
@@ -321,16 +338,14 @@ class GameEntity(object):
 			
 			
 		def face(self):
-			''' Heading Calculation '''
-			x, y = self.location
-			x2, y2 = self.destination
-			Distance = Vector2.from_points(self.location, self.destination).get_magnitude()
-			LowerDistance = Vector2.from_points(self.location, Vector2(x2, y)).get_magnitude()
-	
-			if Distance > 0:
-				self.angle = degrees(acos(LowerDistance/Distance))
+				''' Heading Calculation '''
+				x1, y1 = self.location
+				x2, y2 = self.destination
+
+				rad_angle = atan2((x2-x1), (y2-y1)) 
+				self.angle = degrees(rad_angle)
 				self.image = pygame.transform.rotate(self.image, self.angle)
-					
+						
 					
 		def experience_attribution(self, killed_unit):
 			exp_per_hp = int(killed_unit.exp_value/killed_unit.max_health)
@@ -374,9 +389,19 @@ class GameEntity(object):
 				x, y = self.location
 				w, h = self.image.get_size()
 				
-			
+				if self.route:
+					i = 0
+					for coord in self.route:
+							x, y = coord_to_pos(coord)
+							x += GRID_SQUARE_SIZE[0] / 2
+							y += GRID_SQUARE_SIZE[1] / 2
+							#pygame.draw.circle(surface, (0, 255, 0), (x, y), 3)
+							level = self.world.font.render(str(i), 1, (255,255,0))
+							surface.blit(level, (x, y))
+							i +=1
+				
 				if self.world.show_bars is True and self.decorative is False:
-					pygame.draw.line(surface, (255,255,255), self.location, self.destination, 1)
+					pygame.draw.aaline(surface, (255,255,255), self.location, self.destination, 1)
 					
 					unit = float(25./100.)
 					'''Level'''
@@ -461,16 +486,52 @@ class GameEntity(object):
 							exceding = self.experience - self.world.exp_table[self.level]
 							self.level_up(exceding)
 
-				
-				if self.speed > 0. and self.location != self.destination and not self.pause:
-									
-						vec_to_destination = self.destination - self.location				
-						distance_to_destination = vec_to_destination.get_length()
-						heading = vec_to_destination.get_normalized()
-						travel_distance = min(distance_to_destination, time_passed * self.speed)
-						self.location += travel_distance * heading
+				loc_coord = pos_to_coord(self.location)
+				loc_square = self.world.grid.get(loc_coord)
+				if loc_square is not None:
+					loc_square.blocked =  False
+													
+				if self.decorative is False:
 
-							
+					
+					if self.route:
+						vec_to_destination = coord_to_pos(self.route[-1]) - self.location				
+						distance_to_destination = vec_to_destination.get_length()
+						self.heading = vec_to_destination.get_normalized()
+						travel_distance = min(distance_to_destination, time_passed * self.speed)
+						self.location += travel_distance * self.heading
+						self.route = self.route[:-1]
+					else:
+						if self.speed > 0. and self.location != self.destination and not self.pause and not self.route:
+							vec_to_destination = self.destination - self.location				
+							distance_to_destination = vec_to_destination.get_length()
+							self.heading = vec_to_destination.get_normalized()
+							travel_distance = min(distance_to_destination, time_passed * self.speed)
+							self.location += travel_distance * self.heading
+
+					loc_coord = pos_to_coord(self.location)
+					dest_coord = pos_to_coord(self.destination)
+
+					loc_square = self.world.grid.get(loc_coord)
+					
+					if loc_square is not None:
+						if loc_square.blocked is True:
+							self.route = self.world.grid.find_route(loc_coord, dest_coord)
+						loc_square.blocked = True										
+						"""
+						self.destination = Vector2( *coord_to_pos(self.route[0]) )
+						self.heading = Vector2.from_points(self.location, self.destination)
+						distance = self.heading.get_length()
+						self.heading.normalize()			 
+						
+						if self.speed * time_passed > distance:
+								movement = self.heading * distance 
+								self.route = self.route[1:]
+						else:
+								movement = self.heading * self.speed * time_passed
+								
+						self.location += movement 
+						"""		
 
 
 class State(object):
@@ -1010,6 +1071,7 @@ class Building(GameEntity):
 				self.static = True
 				self.speed = 0
 				self.delay = 1000/2
+
 					
 		def render(self, surface):
 			self.update(pygame.time.get_ticks())
@@ -1074,10 +1136,9 @@ class Mining(State):
 					
 				self.ant.destination = ore.location
 				if self.ant.location.get_distance_to(ore.location) < ore.diameter:
-						self.ant.destination = self.ant.location
 						if self.ant.carrying < self.ant.max_carrying:
 								ore.mined()
-								self.ant.carrying += 1 * int(self.ant.level/10)
+								self.ant.carrying += 1 
 						else:
 								self.max_charge = True
 								
@@ -1150,7 +1211,6 @@ class Spider(GameEntity):
 				self.exp_value = 600
 				
 		def bitten(self, ant):
-				
 				damages = (ant.strength + 1)
 				ant.damages_done += damages
 				self.health -= damages
@@ -1166,6 +1226,9 @@ class Spider(GameEntity):
 						self.image = self.dead_image
 				self.speed = 140.
 				
+		def render(self, surface):
+				self.update(pygame.time.get_ticks())
+				GameEntity.render(self, surface)
 				
 		def process(self, time_passed):
 				
@@ -1176,7 +1239,134 @@ class Spider(GameEntity):
 				
 				GameEntity.process(self, time_passed)
 				
+				
 
+class Square(object):
+		
+		def __init__(self, coord):
+				
+				self.coord = coord
+				self.blocked = False
+				self.parent = None
+				self.marked = False		
+				
+		def reset(self):
+				self.parent = None
+	
+
+
+class Grid(object):
+		
+		def __init__(self, world, width, height):
+				self.world = world
+				self.width = width
+				self.height = height
+				w,h = SCREEN_SIZE
+				self.layer = pygame.Surface((w,h))
+				self.layer.convert_alpha() # give it some alpha values
+				self.layer.set_colorkey((0,0,0))
+				self.layer.fill((0, 0, 0, 0)) # fill it with black translucent
+				self.layer.set_alpha(255)
+				
+				self.rows = []
+				for row in xrange(height):						
+						row_squares = []						
+						for col in xrange(width):								
+								row_squares.append( Square((col, row)) )
+						self.rows.append(row_squares)								
+				
+		def get(self, coord):
+				
+				if not self.is_valid_coordinate(coord):
+						return None
+				x, y = coord
+				return self.rows[int(y)][int(x)]
+		
+		def set(self, coord, blocked):
+				
+				if self.is_valid_coordinate(coord):
+						x, y = coord
+						self.rows[y][x] = blocked
+		
+		def is_valid_coordinate(self, coord):
+				
+				x, y = coord
+				if x < 0 or y < 0 or x >= self.width or y >= self.height:
+						return False
+				return True
+
+		def reset(self):
+				
+				for row in self.rows:
+						for square in row:
+								square.reset()
+		
+				
+		def find_route(self, start_coord, dest_coord):
+				
+				self.reset()
+				
+				visited = set()
+				open_squares = []
+				
+				open_squares.append(start_coord)		
+				
+				steps = ( (0,	+1), (+1,	0), (0,	-1), (-1,	0 ),
+									(+1, -1), (+1, +1), (-1, +1), (-1, -1) )
+				
+				while open_squares:
+						
+						coord = open_squares.pop(0)				
+						
+						if coord == dest_coord:
+								path = []						
+								while coord != start_coord:
+										path.append(coord)
+										square = self.get(coord)								
+										parent_square = self.get(square.parent)
+										coord = square.parent								
+								return path[::-1]
+		 
+						for step in steps:
+								
+								new_coord = (coord[0]+step[0], coord[1]+step[1])
+								
+								if new_coord in visited:
+										continue
+								
+								visited.add(new_coord)						
+								square = self.get(new_coord)
+								
+								if square is None or square.blocked:
+										continue
+								
+								self.get(new_coord).parent = coord
+								open_squares.append(new_coord)
+								
+				return None
+		
+
+		def render(self, surface, block_surface):
+			self.layer.fill((0,0,0,0))
+			self.layer.set_alpha(200)
+
+			if self.world.show_bars is not True:
+				return
+			for y in xrange(self.height):
+					for x in xrange(self.width):	
+							coord = (x, y)
+							render_x = x * GRID_SQUARE_SIZE[0]
+							render_y = y * GRID_SQUARE_SIZE[1]
+							points = ((render_x,render_y), (render_x+GRID_SQUARE_SIZE[0],render_y),(render_x+GRID_SQUARE_SIZE[0],render_y+GRID_SQUARE_SIZE[1]), (render_x,render_y+GRID_SQUARE_SIZE[1]))
+							
+							if self.get(coord).blocked:
+								pygame.draw.circle(self.layer, (255,255,0,127), (render_x+GRID_SQUARE_SIZE[0]/2, render_y+GRID_SQUARE_SIZE[1]/2), GRID_SQUARE_SIZE[0]/2, 1)
+							
+							pygame.draw.polygon(self.layer, (0,170,255,127), points, 1)				
+			surface.blit(self.layer, (0, 0))
+
+								
+		
 def run():
 		#GameInit()
 		pygame.init()
@@ -1188,6 +1378,7 @@ def run():
 		graphRect = world.ground_images[1].get_rect()
 
 		w, h = SCREEN_SIZE
+		world.grid = Grid(world, w/GRID_SQUARE_SIZE[0], h/GRID_SQUARE_SIZE[1])
 		
 		columns = int(w/graphRect.width) + 1
 		rows = int(h/graphRect.height) + 1
@@ -1203,24 +1394,24 @@ def run():
 				screen.blit(Background, graphRect)
 				
 		map = [
-			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   5,   6,   7,   4,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   5,   6,   9,   3,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   10,  6,   6,   7,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   10,  11,  12],
-			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   1,   2,   3,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   5,   6,   7,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   5,   6,   9,   3,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   10,  6,   6,   7,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   4,   10,  11,  12,  4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   1,   2,   3,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   5,   6,   7,   4,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   5,   6,   9,   3,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   10,  6,   6,   7,   4,   4,   4,   4,   4,   4],
-			[4,   4,   4,   4,   4,   4,   4,   4,   4,   10,  11,  12,  4,   4,   4,   4,   4,   4],
+			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 5,	 6,	 7,	 4,	 4],
+			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 5,	 6,	 9,	 3,	 4],
+			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 10,	6,	 6,	 7,	 4],
+			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 10,	11,	12],
+			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
+			[4,	 4,	 4,	 1,	 2,	 3,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
+			[4,	 4,	 4,	 5,	 6,	 7,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
+			[4,	 4,	 4,	 5,	 6,	 9,	 3,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
+			[4,	 4,	 4,	 10,	6,	 6,	 7,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
+			[4,	 4,	 4,	 4,	 10,	11,	12,	4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
+			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
+			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
+			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
+			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 1,	 2,	 3,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
+			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 5,	 6,	 7,	 4,	 4,	 4,	 4,	 4,	 4,	 4],
+			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 5,	 6,	 9,	 3,	 4,	 4,	 4,	 4,	 4,	 4],
+			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 10,	6,	 6,	 7,	 4,	 4,	 4,	 4,	 4,	 4],
+			[4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 4,	 10,	11,	12,	4,	 4,	 4,	 4,	 4,	 4],
 		];
 		
 		x = 0
@@ -1243,9 +1434,9 @@ def run():
 			screen.blit(world.map_images[randint(1, 4)], (wanted_x,wanted_y))
 			
 		# Convert Tiled background to Image
-		bgStr = pygame.image.tostring(screen, 'RGB')
+		bgStr = pygame.image.tostring(screen, 'RGBA')
 
-		world.background = pygame.image.fromstring(bgStr, SCREEN_SIZE, 'RGB')
+		world.background = pygame.image.fromstring(bgStr, SCREEN_SIZE, 'RGBA').convert_alpha()
 		
 		base_images = world.load_sliced_sprites(113, 145, 'collony-base-1step-w113xh145.png')
 
@@ -1255,10 +1446,7 @@ def run():
 		
 		clock = pygame.time.Clock()
 		
-		ant_image = []
-		ant_image.append(pygame.image.load(os.path.join('ressources', 'bad-1.png')).convert_alpha())
-		ant_image.append(pygame.image.load(os.path.join('ressources', 'bad-2.png')).convert_alpha())
-		ant_image.append(pygame.image.load(os.path.join('ressources', 'bad-3.png')).convert_alpha())
+		ant_image = world.load_sliced_sprites(21, 28, 'collony-member-2steps-w21xh28.png')
 		
 		leaf_image = []
 		leaf_image.append(pygame.image.load(os.path.join('ressources', 'bad-child-1.png')).convert_alpha())
@@ -1343,8 +1531,9 @@ def run():
 							world.add_entity(spider)
 					
 					world.process(time_passed)
+				
 				world.render(screen)
-					
+				world.grid.render(screen, None)	
 				pygame.display.update()
 		
 if __name__ == "__main__":		
