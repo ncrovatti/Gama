@@ -59,7 +59,7 @@ class World(object):
 				self.explosion_images 			= self.load_sliced_sprites(16, 16, 'explosions-sprite.png')
 				self.explosed_images 				= self.load_sliced_sprites(20, 20, 'explosed-sprite.png')
 				self.small_explosed_images 	= self.load_sliced_sprites(17, 16, 'explosions-sprite3-10steps-w17xh16.png')
-				self.attack_image 					= self.load_sliced_sprites(6, 20, 'bullet-sprite.png')
+				self.attack_image 					= self.load_sliced_sprites(6, 9, 'bullet-sprite.png')
 				
 				self.background = pygame.surface.Surface(SCREEN_SIZE).convert()
 				self.background.fill((255, 255, 255))
@@ -80,10 +80,8 @@ class World(object):
 				'''
 				images = []
 				master_image = pygame.image.load(os.path.join('ressources', filename)).convert_alpha()
-				""" Needs Work:
-				I'm overridding 'h' argument here 
-				"""
-				master_width, h = master_image.get_size()
+
+				master_width, master_height = master_image.get_size()
 				for i in xrange(int(master_width/w)):
 					images.append(master_image.subsurface((i*w,0,w,h)))
 				return images
