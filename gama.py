@@ -121,8 +121,7 @@ class World(object):
 				'''
 				for id in self.entities.keys():
 						entity = self.get(id)
-						if entity.selected is True:
-							entity_selected = entity
+						if entity.selected is True: entity_selected = entity
 						entity.render(surface)
 
 				''' Ore tank ''' 
@@ -386,14 +385,19 @@ class GameEntity(object):
 				w, h = self.image.get_size()
 				
 				if self.route:
+					''' 
+						FUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU 
+						Well, the pathfinding was working but x and y were overwriten here
+						FUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU
+					'''
 					i = 0
 					for coord in self.route:
-							x, y = coord_to_pos(coord)
-							x += GRID_SQUARE_SIZE[0] / 2
-							y += GRID_SQUARE_SIZE[1] / 2
+							xc, yc = coord_to_pos(coord)
+							xc += GRID_SQUARE_SIZE[0] / 2
+							yc += GRID_SQUARE_SIZE[1] / 2
 							#pygame.draw.circle(surface, (0, 255, 0), (x, y), 3)
 							level = self.world.font.render(str(i), 1, (255,255,0))
-							surface.blit(level, (x, y))
+							surface.blit(level, (xc, yc))
 							i +=1
 				
 				if self.world.show_bars is True and self.decorative is False:
@@ -413,13 +417,13 @@ class GameEntity(object):
 					w2,h2 = level.get_size()
 					bar_y = y - h 
 					surface.blit(level, (bar_x, bar_y, w2,h2))
-					
+					'''
 					bar_x = x-(w/4)
 					level = self.world.font.render('%s %s %s %s' % (str(self.level), self.angle, self.location, self.destination), 1, (255,255,255))
 					w2,h2 = level.get_size()
 					bar_y = y - h 
 					surface.blit(level, (bar_x, bar_y, w2,h2))
-					
+					'''
 					'''Life Bar'''
 					bar_x = x - 12
 					bar_y = y + h/2
@@ -442,6 +446,7 @@ class GameEntity(object):
 				if self.selected:
 					ws, hs = self.selected_image.get_size()
 					surface.blit(self.selected_image, (x-ws/2, (y+h/2)))
+
 				surface.blit(self.image, (x-w/2, y-h/2))
 
 		def process(self, time_passed):
@@ -457,7 +462,9 @@ class GameEntity(object):
 				Might changes Rules to pathfind the nearest square 
 				if the one we want to stop on if already taken
 				'''
-				if self.speed > 0. and self.location != self.destination and not self.decorative:
+				
+				''' CAUTION BARELY WORKING '''
+				if self.speed > 0. and self.location != self.destination:
 					from_loc 		= pos_to_coord(self.location)
 					to_loc 			= pos_to_coord(self.destination)
 					loc_square 	= self.world.grid.get(from_loc)
@@ -468,26 +475,30 @@ class GameEntity(object):
 						else:
 							loc_square.blocked = False
 							loc_square.locked_by = None
-							
-					vec_to_destination 				= self.destination - self.location				
-					distance_to_destination 	= vec_to_destination.get_length()
-					self.heading 							= vec_to_destination.get_normalized()
-					travel_distance 					= min(distance_to_destination, time_passed * self.speed)
-					
-					if self.route:
+
+					if self.route :
+						destination 							= Vector2(*coord_to_pos(self.route[0]))
+						vec_to_destination 				= destination - self.location
 						
-						self.destination 				= Vector2( *coord_to_pos(self.route[0]) )
-						self.heading 						= Vector2.from_points(self.location, self.destination)
-						distance_to_destination = self.heading.get_length()
-						self.heading.normalize()
-									 
+						distance_to_destination 	= vec_to_destination.get_length()
+						
+						if distance_to_destination == 0. : return
+						 
+						self.heading 							= vec_to_destination.get_normalized()
+
 						if self.speed * time_passed > distance_to_destination:
-								travel_distance 			+= distance_to_destination
-								self.route 						= self.route[1:]
+								travel_distance 			= distance_to_destination
+								self.route 						=	self.route[1:]
+								if len(self.route) == 0 : self.route = None
 						else:
-								travel_distance 			+= self.speed * time_passed
-						print
-					print travel_distance
+								travel_distance 			= self.speed * time_passed
+
+					else:
+						vec_to_destination 				= self.destination - self.location				
+						distance_to_destination 	= vec_to_destination.get_length()
+						self.heading 							= vec_to_destination.get_normalized()
+						travel_distance 					= min(distance_to_destination, time_passed * self.speed)
+					
 					self.location += travel_distance * self.heading
 					
 					from_loc 		= pos_to_coord(self.location)
@@ -496,12 +507,6 @@ class GameEntity(object):
 					if loc_square is not None:
 							loc_square.blocked = True
 							loc_square.locked_by = self.id
-
-					'''
-					If self.location == self.destination and loc_square is blocked :
-						Find nearest free Square. 
-					'''
-						
 
 
 
