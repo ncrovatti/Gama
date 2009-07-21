@@ -415,13 +415,13 @@ class GameEntity(object):
 					w2,h2 = level.get_size()
 					bar_y = y - h 
 					surface.blit(level, (bar_x, bar_y, w2,h2))
-					'''
+					
 					bar_x = x-(w/4)
 					level = self.world.font.render('%s %s %s %s' % (str(self.level), self.angle, self.location, self.destination), 1, (255,255,255))
 					w2,h2 = level.get_size()
 					bar_y = y - h 
 					surface.blit(level, (bar_x, bar_y, w2,h2))
-					'''
+					
 					'''Life Bar'''
 					bar_x = x - 12
 					bar_y = y + h/2
@@ -459,57 +459,45 @@ class GameEntity(object):
 				Might changes Rules to pathfind the nearest square 
 				if the one we want to stop on if already taken
 				'''
-				
-				'''
-				from_loc = pos_to_coord(self.location)
-				to_loc = pos_to_coord(self.destination)
-				'''
-				if self.speed > 0. and self.location != self.destination:
-					vec_to_destination 				= self.destination - self.location				
-					distance_to_destination 	= vec_to_destination.get_length()
-					self.heading 							= vec_to_destination.get_normalized()
-					travel_distance 					= min(distance_to_destination, time_passed * self.speed)
-					self.location 						+= travel_distance * self.heading
-					'''
-					loc_square = self.world.grid.get(from_loc)
+				if self.speed > 0. and self.location != self.destination and not self.decorative:
+					from_loc 		= pos_to_coord(self.location)
+					to_loc 			= pos_to_coord(self.destination)
+					loc_square 	= self.world.grid.get(from_loc)
 					
 					if loc_square is not None:
 						if loc_square.blocked is True and loc_square.locked_by != self.id:
 							self.route = self.world.grid.find_route(from_loc, to_loc)
-							print "Square at %s is locked by %s" % (from_loc, loc_square.locked_by)
 						else:
-							print "%s Moving to %s" % (self.id, str(to_loc))
+							loc_square.blocked = False
+							loc_square.locked_by = None
+							
+					vec_to_destination 				= self.destination - self.location				
+					distance_to_destination 	= vec_to_destination.get_length()
+					self.heading 							= vec_to_destination.get_normalized()
+					travel_distance 					= min(distance_to_destination, time_passed * self.speed)
+					
+					if self.route:
+						
+						self.destination 				= Vector2( *coord_to_pos(self.route[0]) )
+						self.heading 						= Vector2.from_points(self.location, self.destination)
+						distance_to_destination = self.heading.get_length()
+						self.heading.normalize()
+									 
+						if self.speed * time_passed > distance_to_destination:
+								travel_distance 			+= distance_to_destination
+								self.route 						= self.route[1:]
+						else:
+								travel_distance 			+= self.speed * time_passed
+						print
+					print travel_distance
+					self.location += travel_distance * self.heading
+					
+					from_loc 		= pos_to_coord(self.location)
+					loc_square 	= self.world.grid.get(from_loc)
+					
+					if loc_square is not None:
 							loc_square.blocked = True
 							loc_square.locked_by = self.id
-											
-					if self.route is not None:
-						#print self.id, self.route
-						self.destination = Vector2(*coord_to_pos(self.route[0]))
-						to_loc = self.route[0]
-						#print "%i (%s) starts from %s (%s). Next Step is %s (%s) and is not Reached"% (self.id, self.location, from_loc, coord_to_pos(from_loc), to_loc, coord_to_pos(to_loc))
-						#print  self.id, self.location, from_loc, to_loc, self.route
-						
-					if from_loc == to_loc and len(self.route) > 1:
-						print "%s has arrived to %s" % (self.id, str(to_loc))
-						loc_square = self.world.grid.get(self.route[0])
-						loc_square.blocked = False
-						loc_square.locked_by = None
-						
-						
-						self.route = self.route[1:]
-						
-						if self.destination == self.location and len(self.route) < 1:
-							self.route = None
-							return
-						else:
-							print self.destination, self.location, len(self.route), self.route
-							self.destination = Vector2(*coord_to_pos(self.route[0]))
-						
-						#print "%i Removing %s : location reached (%s) vs (%s)" % (self.id, str(self.route[0]), coord_to_pos(self.route[0]), self.route) 
-						#print "%i Next step is %s" % (self.id, str(self.route[0]))
-						
-					'''
-
 
 					'''
 					If self.location == self.destination and loc_square is blocked :
