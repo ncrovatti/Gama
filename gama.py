@@ -1439,6 +1439,10 @@ def run():
 		champion_images.append(pygame.image.load(os.path.join('ressources', 'alphabad-1.png')).convert_alpha()) 
 		champion_images.append(pygame.image.load(os.path.join('ressources', 'alphabad-2.png')).convert_alpha()) 
 		
+		
+		shading = pygame.image.load(os.path.join('ressources', 'gradient.png')).convert_alpha()
+		shading = pygame.transform.scale(shading, SCREEN_SIZE)
+		
 		for ant_no in xrange(ANT_COUNT):
 				ant = Ant(world, ant_image)
 				ant.location = Vector2(randint(0, w), randint(0, h))
@@ -1509,7 +1513,8 @@ def run():
 					world.process(time_passed)
 				
 				world.render(screen)
-				world.grid.render(screen, None)	
+				world.grid.render(screen, None)
+				screen.blit(shading, (0,0))
 				pygame.display.update()
 		
 if __name__ == "__main__":		
