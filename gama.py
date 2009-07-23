@@ -1,7 +1,7 @@
-SCREEN_SIZE = (1024, 701)
+SCREEN_SIZE = (1650, 1050)
 NEST_POSITION = (320, 240)
 GRID_SQUARE_SIZE = (32, 32)
-ANT_COUNT = 20
+ANT_COUNT = 100
 NEST_SIZE = 200.
 
 import os
@@ -468,14 +468,14 @@ class GameEntity(object):
 					from_loc 		= pos_to_coord(self.location)
 					to_loc 			= pos_to_coord(self.destination)
 					loc_square 	= self.world.grid.get(from_loc)
-					
+					'''
 					if loc_square is not None:
 						if loc_square.blocked is True and loc_square.locked_by != self.id:
 							self.route = self.world.grid.find_route(from_loc, to_loc)
 						else:
 							loc_square.blocked = False
 							loc_square.locked_by = None
-
+					'''
 					if self.route :
 						destination 							= Vector2(*coord_to_pos(self.route[0]))
 						vec_to_destination 				= destination - self.location
@@ -1300,7 +1300,7 @@ class Grid(object):
 def run():
 		#GameInit()
 		pygame.init()
-		screen = pygame.display.set_mode(SCREEN_SIZE, 0, 32)
+		screen = pygame.display.set_mode(SCREEN_SIZE, HWSURFACE | FULLSCREEN, 32)
 		#pygame.display.toggle_fullscreen()
 		world = World()
 
@@ -1418,6 +1418,9 @@ def run():
 						if event.type == QUIT:
 								return				
 						if event.type == MOUSEBUTTONDOWN:
+								ore = Ore(world, ore_images[randint(0,5)])
+								ore.location = Vector2(*pygame.mouse.get_pos())
+								world.add_entity(ore)		
 								entity = world.get_clicked_entity(pygame.Rect(pygame.mouse.get_pos() + (4,4)))
 								if entity is not None:
 									entity.select()
