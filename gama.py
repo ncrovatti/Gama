@@ -1,4 +1,4 @@
-SCREEN_SIZE = (1024, 701)
+SCREEN_SIZE = (1280, 800)
 NEST_POSITION = (320, 240)
 GRID_SQUARE_SIZE = (32, 32)
 ANT_COUNT = 20
@@ -7,10 +7,9 @@ NEST_SIZE = 200.
 import os
 import pygame
 from pygame.locals import *
-from math import sqrt, acos, degrees, atan2
+from math import sqrt, acos, degrees, atan2, ceil
 from random import randint, choice, random
 from gameobjects.vector2 import Vector2
-from threading import Thread
 
 
 def pos_to_coord(pos):				
@@ -27,7 +26,7 @@ def coord_to_pos(coord):
 class World(object):
 		
 		def __init__(self):
-				self.font = pygame.font.SysFont('Arial', 12, False)
+				self.font = pygame.font.SysFont('Arial', 14, True)
 				
 				self.entities = {}
 				self.entities_count = {}
@@ -93,7 +92,11 @@ class World(object):
 				self.entity_id += 1
 				
 		def remove_entity(self, entity):
-				
+				''' Unlocking Square '''
+				loc = self.grid.get(pos_to_coord(entity.location))
+				if loc is not None:
+						loc.blocked = False
+						loc.locked_by = None
 				del self.entities[entity.id]
 								
 		def get(self, entity_id):
@@ -256,7 +259,7 @@ class GameEntity(object):
 				self.decorative = False
 				self.name = name
 				self.location = Vector2(0, 0)
-				self.destination = Vector2(0, 0)
+				self.move(Vector2(0, 0))
 				self.speed = 0.
 				self.rotation_speed = 360.
 				self.rotation = 0.
@@ -294,11 +297,20 @@ class GameEntity(object):
 				
 				w,h = self.image.get_size()
 				self.diameter = sqrt(w**2 + h**2)/2
+				self.block_area = ceil(self.diameter/GRID_SQUARE_SIZE[0])
 				
 				self.brain = StateMachine()
 				
 				self.id = 0
 				
+		def move(self, destination):
+			self.route = None
+			loc = pos_to_coord(destination)
+			x, y = coord_to_pos(loc)
+			x += GRID_SQUARE_SIZE[0]/2
+			y += GRID_SQUARE_SIZE[1]/2
+			self.destination = Vector2(*(x,y)) 
+			
 		def attack_animation(self, target): 
 			if self.world.get_entity_count_by_name('bullet') < 5:
 				bullet = Bullet(self.world, self.attack_image)
@@ -307,7 +319,7 @@ class GameEntity(object):
 				target_radius = int(target.diameter/2)
 			
 				bullet.location = Vector2(*self.location) + Vector2(randint(-radius, radius), randint(-radius, radius))
-				bullet.destination = Vector2(*target.location) + Vector2(randint(-target_radius, target_radius), randint(-target_radius, target_radius))
+				bullet.move(Vector2(*target.location) + Vector2(randint(-target_radius, target_radius), randint(-target_radius, target_radius)))
 				self.world.add_entity(bullet)
 		
 		def explosed_animation(self, target, images=False, scale=1): 
@@ -316,7 +328,7 @@ class GameEntity(object):
 				
 			explosion = Explosion(self.world, images)
 			explosion.location = Vector2(*target.location)			
-			explosion.destination = Vector2(*target.location)
+			explosion.move(Vector2(*target.location))
 			explosion.doublescale = scale
 			self.world.add_entity(explosion)
 			
@@ -327,7 +339,7 @@ class GameEntity(object):
 				radius = int(target.diameter/2)
 				explosion.parent = target
 				explosion.location = Vector2(*target.location) + Vector2(randint(-radius, radius), randint(-radius, radius))
-				explosion.destination = Vector2(*target.destination) + Vector2(randint(-radius, radius), randint(-radius, radius))
+				explosion.move(Vector2(*target.destination) + Vector2(randint(-radius, radius), randint(-radius, radius)))
 				explosion.speed = target.speed
 				self.world.add_entity(explosion)
 			
@@ -335,6 +347,7 @@ class GameEntity(object):
 		def face(self):
 				''' Heading Calculation '''
 				x1, y1 = self.location
+				''' Needs work to take into account sub destinations'''
 				x2, y2 = self.destination
 
 				rad_angle = atan2((x2-x1), (y2-y1)) 
@@ -451,6 +464,8 @@ class GameEntity(object):
 
 		def process(self, time_passed):
 				
+				steps = ( (0,	+1), (+1,	0), (0,	-1), (-1,	0 ),
+								(+1, -1), (+1, +1), (-1, +1), (-1, -1) )
 				self.brain.think()
 				
 				if self.level > 0:
@@ -462,9 +477,7 @@ class GameEntity(object):
 				Might changes Rules to pathfind the nearest square 
 				if the one we want to stop on if already taken
 				'''
-				
-				''' CAUTION BARELY WORKING '''
-				if self.speed > 0. and self.location != self.destination:
+				if self.speed > 0. and self.location != self.destination and not self.decorative:
 					from_loc 		= pos_to_coord(self.location)
 					to_loc 			= pos_to_coord(self.destination)
 					loc_square 	= self.world.grid.get(from_loc)
@@ -473,41 +486,56 @@ class GameEntity(object):
 						if loc_square.blocked is True and loc_square.locked_by != self.id:
 							self.route = self.world.grid.find_route(from_loc, to_loc)
 						else:
-							loc_square.blocked = False
-							loc_square.locked_by = None
+							x,y = from_loc 
+							for step  in xrange(self.block_area):
+								coord = (x+steps[step][0],y+steps[step][1])
+								loc_square 	= self.world.grid.get(coord)
+								x,y = coord
+								if loc_square is not None:
+									loc_square.unblock()
 
+					''' Default movement '''
+					vec_to_destination 				= self.destination - self.location				
+					distance_to_destination 	= vec_to_destination.get_length()
+					self.heading 							= vec_to_destination.get_normalized()
+					travel_distance 					= min(distance_to_destination, time_passed * self.speed)
+
+					''' Overwriting default movement if we have a route ''' 
 					if self.route :
-						destination 							= Vector2(*coord_to_pos(self.route[0]))
-						vec_to_destination 				= destination - self.location
+						''' Repositioning in sprite to Square center ''' 
+						x_dest, y_dest = coord_to_pos(self.route[0])
+						x_dest += GRID_SQUARE_SIZE[0]/2
+						y_dest += GRID_SQUARE_SIZE[1]/2
 						
+						''' Affecting new destination '''
+						destination 							= Vector2(*(x_dest, y_dest))
+						vec_to_destination 				= destination - self.location
 						distance_to_destination 	= vec_to_destination.get_length()
 						
 						if distance_to_destination == 0. : return
 						 
 						self.heading 							= vec_to_destination.get_normalized()
-
+						
 						if self.speed * time_passed > distance_to_destination:
 								travel_distance 			= distance_to_destination
 								self.route 						=	self.route[1:]
 								if len(self.route) == 0 : self.route = None
 						else:
 								travel_distance 			= self.speed * time_passed
-
-					else:
-						vec_to_destination 				= self.destination - self.location				
-						distance_to_destination 	= vec_to_destination.get_length()
-						self.heading 							= vec_to_destination.get_normalized()
-						travel_distance 					= min(distance_to_destination, time_passed * self.speed)
 					
 					self.location += travel_distance * self.heading
 					
 					from_loc 		= pos_to_coord(self.location)
-					loc_square 	= self.world.grid.get(from_loc)
 					
-					if loc_square is not None:
-							loc_square.blocked = True
-							loc_square.locked_by = self.id
+					
 
+					x,y = from_loc 
+					for step  in xrange(self.block_area):
+						coord = (x+steps[step][0],y+steps[step][1])
+						loc_square 	= self.world.grid.get(coord)
+						x,y = coord
+						if loc_square is not None:
+							loc_square.block(self)
 
 
 class State(object):
@@ -680,7 +708,7 @@ class AntStateDelivering(State):
 				
 				self.ant.speed = 60.				
 				random_offset = Vector2(randint(-20, 20), randint(-20, 20))
-				self.ant.destination = Vector2(*NEST_POSITION) + random_offset
+				self.ant.move(Vector2(*NEST_POSITION) + random_offset)
 			 
 			
 class AntStateExploring(State):
@@ -693,7 +721,7 @@ class AntStateExploring(State):
 		def random_destination(self):
 				
 				w, h = SCREEN_SIZE
-				self.ant.destination = Vector2(randint(0, w), randint(0, h))		
+				self.ant.move(Vector2(randint(0, w), randint(0, h)))		
 		
 		def do_actions(self):
 				
@@ -748,7 +776,7 @@ class AntStateChampHunting(State):
 
 				if self.ant.location.get_distance_to(champ.location) < champ.diameter:
 						''' Stoping movements if we are in range '''
-						self.ant.destination = self.ant.location
+						self.ant.move(self.ant.location)
 						self.ant.attack_animation(champ)
 						
 						#print "I'm in range : %s" % champ.diameter
@@ -765,7 +793,7 @@ class AntStateChampHunting(State):
 				else:
 					#print "I'm not in range : %s" % champ.diameter
 					# moving to champs location 
-					self.ant.destination = champ.location
+					self.ant.move(champ.location)
 				
 		def check_conditions(self):
 				if self.ant.health <= int(self.ant.max_health/10):
@@ -807,7 +835,7 @@ class AntStateHunting(State):
 				if spider is None:
 						return
 						
-				self.ant.destination = spider.location
+				self.ant.move(spider.location)
 
 				if self.ant.location.get_distance_to(spider.location) < spider.diameter*3:
 					
@@ -875,7 +903,7 @@ class AntStateSeeking(State):
 		
 				leaf = self.ant.world.get(self.ant.leaf_id)
 				if leaf is not None:												
-						self.ant.destination = leaf.location
+						self.ant.move(leaf.location)
 						self.ant.speed = 160. + randint(-20, 20)
 						
 class SpiderChampion(GameEntity):
@@ -920,13 +948,13 @@ class SpiderChampion(GameEntity):
 						self.almost_dead = True
 						if self.location == self.destination:
 							w,h = SCREEN_SIZE
-							self.destination = Vector2(randint(w, w+100), randint(h, h+100))
+							self.move(Vector2(randint(w, w+100), randint(h, h+100)))
 							self.speed = 170.
 
 				if self.health <= 0:
 						self.speed = 0.
 						self.image = self.dead_image
-						ant.destination = self.location
+						ant.move(self.location)
 						print "Fight report"
 						print "Damage Done : %d" % self.damages_done
 						print "Kills : %d" % self.kills
@@ -1063,7 +1091,8 @@ class Mining(State):
 				if ore is None:
 						return
 					
-				self.ant.destination = ore.location
+				self.ant.move(ore.location)
+				
 				if self.ant.location.get_distance_to(ore.location) < ore.diameter:
 						if self.ant.carrying < self.ant.max_carrying:
 								ore.mined()
@@ -1096,7 +1125,7 @@ class Mining(State):
 				ore = self.ant.world.get(self.ant.ore_id)
 				if ore is not None:
 						x,y,w,h = ore.image.get_rect()
-						self.ant.destination = ore.location - Vector2(w/2,h/2)
+						self.ant.move(ore.location - Vector2(w/2,h/2))
 						self.ant.speed = 160. + randint(-20, 20)
 							
 							
@@ -1182,7 +1211,15 @@ class Square(object):
 				
 		def reset(self):
 				self.parent = None
-	
+		
+		def block(self, unit):
+				self.blocked = True
+				self.locked_by = unit.id
+ 
+		def unblock(self):
+				self.blocked = False
+				self.locked_by = None
+ 
 
 
 class Grid(object):
@@ -1280,8 +1317,8 @@ class Grid(object):
 			self.layer.fill((0,0,0,0))
 			self.layer.set_alpha(200)
 
-			if self.world.show_bars is not True:
-				return
+			if self.world.show_bars is not True: return
+
 			for y in xrange(self.height):
 					for x in xrange(self.width):	
 							coord = (x, y)
@@ -1300,7 +1337,7 @@ class Grid(object):
 def run():
 		#GameInit()
 		pygame.init()
-		screen = pygame.display.set_mode(SCREEN_SIZE, 0, 32)
+		screen = pygame.display.set_mode(SCREEN_SIZE, FULLSCREEN, 32)
 		#pygame.display.toggle_fullscreen()
 		world = World()
 
@@ -1308,7 +1345,7 @@ def run():
 		graphRect = world.ground_images[1].get_rect()
 
 		w, h = SCREEN_SIZE
-		world.grid = Grid(world, w/GRID_SQUARE_SIZE[0], h/GRID_SQUARE_SIZE[1])
+		world.grid = Grid(world, (w/GRID_SQUARE_SIZE[0])+1, (h/GRID_SQUARE_SIZE[1])+1)
 		
 		columns = int(w/graphRect.width) + 1
 		rows = int(h/graphRect.height) + 1
@@ -1445,7 +1482,7 @@ def run():
 							champion = SpiderChampion(world, champion_images)
 							champion.location = Vector2(randint(0, w), randint(0, h))
 							random_offset = Vector2(randint(-NEST_SIZE/2, NEST_SIZE/2), randint(-NEST_SIZE/2, NEST_SIZE/2))
-							champion.destination = Vector2(*NEST_POSITION) + random_offset
+							champion.move(Vector2(*NEST_POSITION) + random_offset)
 							world.add_entity(champion)			
 					
 																
@@ -1457,7 +1494,7 @@ def run():
 					if randint(1, 50) == 1:
 							spider = Spider(world, spider_image)
 							spider.location = Vector2(-50, randint(0, h))
-							spider.destination = Vector2(w+50, randint(0, h))						
+							spider.move(Vector2(w+50, randint(0, h)))						
 							world.add_entity(spider)
 					
 					world.process(time_passed)
